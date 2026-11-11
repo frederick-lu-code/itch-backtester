@@ -2,7 +2,7 @@
 # Runs the benchmark suite and writes raw results to bench/results/<date>-<commit>/.
 #
 #   scripts/run_bench.sh [--input data/<file>] [--runs 10] [--runs-slow 5] [--cpu N]
-#                        [--only parse|book|latency|e2e|micro]
+#                        [--only parse|book|latency|e2e|shards|micro]
 #
 # Method (see BENCHMARKS.md): release preset, one discarded warm-up run then N measured runs
 # per benchmark. The two baseline-book variants take minutes per run and use --runs-slow.
@@ -150,6 +150,35 @@ print(json.dumps({
     "records": sum(first["records"].values()),
     "recorder_blocked_records": [m["timing"]["recorder_blocked_records"] for m in metas],
     "recorder_blocked_ms": [m["timing"]["recorder_blocked_ns"] / 1e6 for m in metas],
+    "run_seconds": [m["timing"]["wall_time_s"] for m in metas],
+}, indent=2))
+PY
+    done
+    rm -rf "$SCRATCH"
+fi
+
+if wanted shards; then
+    SCRATCH="$(mktemp -d)"
+    for shards in 1 2 4 8; do
+        echo "== sharding $shards"
+        SHARD_ARGS=()
+        [[ "$shards" -gt 1 ]] && SHARD_ARGS=(--shards "$shards")
+        for i in $(seq 0 "$RUNS_SLOW"); do # run 0 is the warm-up
+            awake build/release/apps/backtest --input "$INPUT" --config configs/noop.toml \
+                --out "$SCRATCH/$shards-$i" --recorder none --skip-input-hash \
+                ${SHARD_ARGS[@]+"${SHARD_ARGS[@]}"} | head -1
+        done
+        python3 - "$SCRATCH" "$shards" "$RUNS_SLOW" "$INPUT" >"$OUT/shards_$shards.json" <<'PY'
+import json, os, sys
+scratch, shards, runs, path = sys.argv[1], sys.argv[2], int(sys.argv[3]), sys.argv[4]
+metas = [json.load(open(f"{scratch}/{shards}-{i}/run.json")) for i in range(1, runs + 1)]
+print(json.dumps({
+    "benchmark": "sharding",
+    "variant": f"{shards} shard" + ("" if shards == "1" else "s"),
+    "shards": int(shards),
+    "messages": metas[0]["stats"]["messages"],
+    "bytes": os.path.getsize(path),
+    "router_waits": [m["timing"]["router_waits"] for m in metas],
     "run_seconds": [m["timing"]["wall_time_s"] for m in metas],
 }, indent=2))
 PY

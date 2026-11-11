@@ -176,6 +176,19 @@ def e2e_table(rows: list[dict]) -> str:
                   "Time waited, ms (median)", "Runs"], out)
 
 
+def sharding_table(rows: list[dict]) -> str:
+    rows = sorted(rows, key=lambda r: r["shards"])
+    base = med(per_second(rows[0]))
+    return table(
+        ["Engines", "Million messages/s, median (min to max)", "Speed-up over 1",
+         "Wall seconds, median (min to max)", "Router waits on a full queue (median)", "Runs"],
+        [[("1 (single-threaded, no router)" if r["shards"] == 1
+           else f"{r['shards']} shards + router thread"),
+          spread(per_second(r), 1e6, 2), f"{med(per_second(r)) / base:.2f}x",
+          spread(r["run_seconds"], 1, 1), f"{med(r['router_waits']):,.0f}",
+          len(r["run_seconds"])] for r in rows])
+
+
 def micro_rows(micro: dict) -> dict[str, dict]:
     return {b["name"]: b for b in micro["benchmarks"] if b.get("run_type", "iteration") == "iteration"}
 
@@ -330,6 +343,7 @@ def main(argv: list[str]) -> int:
     text = replace_block(text, "timing_overhead",
                          timing_overhead_table(latency, books) if latency else None)
     text = replace_block(text, "end_to_end", e2e_table(of("end_to_end")) if of("end_to_end") else None)
+    text = replace_block(text, "sharding", sharding_table(of("sharding")) if of("sharding") else None)
     text = replace_block(text, "micro", micro_table(micro) if micro else None)
     text = replace_block(text, "dispatch", dispatch_sentence(micro) if micro else None)
     text = replace_block(text, "optimisation_log", log_table(results, micro, latency))
