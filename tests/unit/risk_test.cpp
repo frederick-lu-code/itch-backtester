@@ -3,9 +3,9 @@
 
 #include "itchbt/risk/risk.hpp"
 
-#include <cstdint>
-
 #include <gtest/gtest.h>
+
+#include <cstdint>
 
 namespace itchbt::risk {
 namespace {
@@ -34,8 +34,27 @@ RejectReason check(RiskGate& gate, Side side, Price price, Qty qty, Timestamp no
 
 TEST(RiskChecks, DefaultsAllowAnySaneOrder) {
     RiskGate gate(RiskConfig{}, false, 1);
-    EXPECT_EQ(check(gate, Side::Buy, 1'000'000, 4'000'000'000U), RejectReason::None);
-    EXPECT_EQ(check(gate, Side::Sell, 4'000'000'000U, 4'000'000'000U), RejectReason::None);
+    EXPECT_EQ(check(gate, Side::Buy, 1'000'000, 1'000'000), RejectReason::None);
+    EXPECT_EQ(check(gate, Side::Sell, 30'000'000, 50'000), RejectReason::None);
+}
+
+TEST(RiskChecks, AbsurdNotionalIsRejectedNotOverflowed) {
+    // The largest price times the largest quantity is about 1.8e19, beyond a signed 64-bit
+    // integer. The gate must refuse it cleanly even with every configured limit off.
+    RiskGate gate(RiskConfig{}, false, 1);
+    EXPECT_EQ(check(gate, Side::Buy, 0xFFFFFFFFU, 0xFFFFFFFFU), RejectReason::MaxOrderNotional);
+    EXPECT_EQ(check(gate, Side::Sell, 4'000'000'000U, 4'000'000'000U),
+              RejectReason::MaxOrderNotional);
+    EXPECT_EQ(gate.open_notional(), 0);
+}
+
+TEST(RiskChecks, HardNotionalCeilingAppliesWhateverTheConfigSays) {
+    RiskGate gate(RiskConfig{}, false, 1);
+    const Price price = 1U << 28; // 2^28 x 2^28 = 2^56: exactly the ceiling
+    EXPECT_EQ(check(gate, Side::Buy, price, (1U << 28) + 1), RejectReason::MaxOrderNotional);
+    EXPECT_EQ(check(gate, Side::Buy, price, 1U << 28), RejectReason::None);
+    // Gross exposure is now at the ceiling, so even one more share is refused.
+    EXPECT_EQ(check(gate, Side::Sell, 1, 1), RejectReason::MaxGrossNotional);
 }
 
 TEST(RiskChecks, ZeroQuantityOrPriceIsInvalid) {
@@ -119,7 +138,7 @@ TEST(RiskChecks, MaxPositionFollowsFillsAndCancels) {
     ASSERT_EQ(check(gate, Side::Buy, 1'000'000, 300), RejectReason::None);
     gate.on_fill(0, Side::Buy, 1'000'000, 1'000'000, 100); // position 100, 200 still open
     EXPECT_EQ(check(gate, Side::Buy, 1'000'000, 1), RejectReason::MaxPosition);
-    gate.on_closed(0, Side::Buy, 1'000'000, 200, true);    // remainder cancelled
+    gate.on_closed(0, Side::Buy, 1'000'000, 200, true); // remainder cancelled
     EXPECT_EQ(check(gate, Side::Buy, 1'000'000, 200), RejectReason::None);
     EXPECT_EQ(check(gate, Side::Buy, 1'000'000, 1), RejectReason::MaxPosition);
     // Long 100: a sell of 400 would end short 300, which is allowed; 401 is not.
@@ -186,8 +205,7 @@ TEST(RiskChecks, RateLimitIsATokenBucketOnSimulationTime) {
     }
     EXPECT_EQ(check(gate, Side::Buy, 1'000'000, 1, t0), RejectReason::RateLimit);
     // One nanosecond short of a new token, then exactly on it.
-    EXPECT_EQ(check(gate, Side::Buy, 1'000'000, 1, t0 + kSecond / 10 - 1),
-              RejectReason::RateLimit);
+    EXPECT_EQ(check(gate, Side::Buy, 1'000'000, 1, t0 + kSecond / 10 - 1), RejectReason::RateLimit);
     EXPECT_EQ(check(gate, Side::Buy, 1'000'000, 1, t0 + kSecond / 10), RejectReason::None);
     EXPECT_EQ(check(gate, Side::Buy, 1'000'000, 1, t0 + kSecond / 10), RejectReason::RateLimit);
 }
@@ -342,11 +360,9 @@ TEST(RiskPnl, FillBeforeAnyMarkIsMarkedAtTheFillPrice) {
 
 TEST(RiskPnl, SymbolsAreTrackedSeparatelyAndSummed) {
     RiskGate gate(RiskConfig{}, false, 2);
-    ASSERT_EQ(gate.check_and_reserve(0, Side::Buy, 1'000'000, 10, 0, market()),
-              RejectReason::None);
+    ASSERT_EQ(gate.check_and_reserve(0, Side::Buy, 1'000'000, 10, 0, market()), RejectReason::None);
     gate.on_fill(0, Side::Buy, 1'000'000, 1'000'000, 10);
-    ASSERT_EQ(gate.check_and_reserve(1, Side::Sell, 500'000, 20, 0, market()),
-              RejectReason::None);
+    ASSERT_EQ(gate.check_and_reserve(1, Side::Sell, 500'000, 20, 0, market()), RejectReason::None);
     gate.on_fill(1, Side::Sell, 500'000, 500'000, 20);
     gate.on_top_of_book(0, market(1'000'100, 1'000'100));
     gate.on_top_of_book(1, market(500'100, 500'100));
@@ -375,7 +391,7 @@ TEST(KillSwitch, TripsOnlyWhenTheLossExceedsTheLimit) {
     trade(gate, Side::Buy, 1'000'000, 100);
     EXPECT_FALSE(gate.on_top_of_book(0, market(990'000, 990'000))); // down exactly 100 dollars
     EXPECT_FALSE(gate.tripped());
-    EXPECT_TRUE(gate.on_top_of_book(0, market(989'999, 990'000)));  // half a unit a share more
+    EXPECT_TRUE(gate.on_top_of_book(0, market(989'999, 990'000))); // half a unit a share more
     EXPECT_TRUE(gate.tripped());
     EXPECT_EQ(gate.kill_reason(), KillReason::LossLimit);
 }
@@ -410,7 +426,7 @@ TEST(KillSwitch, RejectRateBoundary) {
     RiskGate gate(c, false, 1);
     EXPECT_FALSE(gate.note_reject(100));
     EXPECT_FALSE(gate.note_reject(200));
-    EXPECT_FALSE(gate.note_reject(300)); // three in the window: at the threshold, not over
+    EXPECT_FALSE(gate.note_reject(300));  // three in the window: at the threshold, not over
     EXPECT_TRUE(gate.note_reject(1'100)); // a fourth, exactly one window after the first
     EXPECT_EQ(gate.kill_reason(), KillReason::RejectRate);
     EXPECT_EQ(gate.rejects(), 4U);
@@ -424,9 +440,11 @@ TEST(KillSwitch, RejectsSpreadWiderThanTheWindowDoNotTrip) {
     EXPECT_FALSE(gate.note_reject(100));
     EXPECT_FALSE(gate.note_reject(200));
     EXPECT_FALSE(gate.note_reject(300));
-    EXPECT_FALSE(gate.note_reject(1'101)); // one nanosecond outside the window of the first
-    EXPECT_FALSE(gate.note_reject(1'150));
-    EXPECT_TRUE(gate.note_reject(1'201));  // 200, 300, 1101, 1150 and now 1201: over again
+    // Each new reject is judged with the three before it; all four must fit in one window.
+    EXPECT_FALSE(gate.note_reject(1'101)); // 100..1101 spans 1001
+    EXPECT_FALSE(gate.note_reject(1'201)); // 200..1201 spans 1001
+    EXPECT_FALSE(gate.note_reject(1'301)); // 300..1301 spans 1001
+    EXPECT_TRUE(gate.note_reject(1'302));  // 1101..1302 spans 201: four inside one window
 }
 
 TEST(KillSwitch, RejectRateIsOffByDefault) {

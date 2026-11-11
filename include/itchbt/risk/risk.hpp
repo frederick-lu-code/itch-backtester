@@ -73,6 +73,10 @@ public:
     void configure(const sim::RiskConfig& config, bool extended_hours, std::size_t symbols) {
         *this = RiskGate();
         config_ = config;
+        // Whatever the configuration says, no single order or total exposure may exceed
+        // kMaxNotional, so that sums and marks of accepted exposure cannot overflow.
+        config_.max_order_notional = std::min(config_.max_order_notional, kMaxNotional);
+        config_.max_gross_notional = std::min(config_.max_gross_notional, kMaxNotional);
         extended_hours_ = extended_hours;
         symbols_.assign(symbols, SymbolRisk{});
         bucket_capacity_ = std::int64_t{config.rate_limit_burst} * kNanos;
@@ -210,6 +214,12 @@ public:
     [[nodiscard]] std::uint64_t fills() const noexcept { return fills_; }
     [[nodiscard]] std::size_t symbol_count() const noexcept { return symbols_.size(); }
 
+    /// Hard ceiling on one order's notional and on gross exposure, in price units x shares:
+    /// 2^56, about 7.2 trillion dollars. It leaves a factor of 128 before signed 64-bit
+    /// arithmetic could overflow, which covers PnL being held doubled and marks moving
+    /// against a position.
+    static constexpr std::int64_t kMaxNotional = std::int64_t{1} << 56;
+
 private:
     static constexpr std::int64_t kNanos = 1'000'000'000;
 
@@ -230,10 +240,14 @@ private:
         if (qty > config_.max_order_qty) {
             return RejectReason::MaxOrderQty;
         }
-        const std::int64_t notional = std::int64_t{price} * qty;
-        if (notional > config_.max_order_notional) {
+        // Price and quantity are both 32-bit, so their product needs unsigned 64-bit: the
+        // largest possible order (about 1.8e19) does not fit a signed one. Anything the limit
+        // lets through is at most kMaxNotional and is safe to hold signed from here on.
+        const std::uint64_t wide_notional = std::uint64_t{price} * qty;
+        if (wide_notional > static_cast<std::uint64_t>(config_.max_order_notional)) {
             return RejectReason::MaxOrderNotional;
         }
+        const auto notional = static_cast<std::int64_t>(wide_notional);
         if (config_.price_collar_bps != 0) {
             if (!market.has_bid || !market.has_ask) {
                 return RejectReason::NoReferencePrice;

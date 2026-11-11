@@ -13,6 +13,7 @@
 #include <gtest/gtest.h>
 
 #include <cstddef>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -482,6 +483,147 @@ TEST(Engine, UpdatesStillInFlightAtTheEndOfDataAreDelivered) {
     EXPECT_EQ(s.order_update_times[0], 1100U + 2'000'000U);
     EXPECT_EQ(r.position, 100);
     EXPECT_TRUE(s.ended);
+}
+
+// --- Kill switch ---------------------------------------------------------------------------------
+
+std::vector<record::RiskRecord> read_risk_records(const std::filesystem::path& path) {
+    std::ifstream in(path, std::ios::binary);
+    const std::vector<char> bytes{std::istreambuf_iterator<char>(in),
+                                  std::istreambuf_iterator<char>()};
+    std::vector<record::RiskRecord> records;
+    for (std::size_t pos = sizeof(record::FileHeader);
+         pos + sizeof(record::RiskRecord) <= bytes.size(); pos += sizeof(record::RiskRecord)) {
+        record::RiskRecord r;
+        std::memcpy(&r, bytes.data() + pos, sizeof(r));
+        records.push_back(r);
+    }
+    return records;
+}
+
+TEST(KillSwitchRun, LossLimitCancelsOpenOrdersAndRejectsEverythingAfter) {
+    ItchWriter w = session();
+    w.add(1100, kAapl, 1, Side::Sell, 100, "AAPL", 1010)
+        .add(1200, kAapl, 2, Side::Buy, 500, "AAPL", 1000) // strategy buys 100 and rests a bid
+        .del(1300, kAapl, 2)                               // one-sided: the last mark stands
+        .add(1400, kAapl, 3, Side::Buy, 100, "AAPL", 900)  // mid falls to 955: over the limit
+        .add(1500, kAapl, 4, Side::Sell, 100, "AAPL", 1005)
+        .add(1600, kAapl, 5, Side::Sell, 100, "AAPL", 1004);
+    Config c = config_for();
+    c.risk.loss_limit = 1'000; // price units x shares: ten cents
+    ScriptedStrategy s;
+    s.book = [](const BookUpdate& u, Context& ctx) {
+        if (u.ts == 1200) {
+            static_cast<void>(ctx.submit_ioc(kAapl, Side::Buy, 1010, 100));
+            static_cast<void>(ctx.submit_limit(kAapl, Side::Buy, 900, 100));
+        } else if (u.ts >= 1500) {
+            static_cast<void>(ctx.submit_limit(kAapl, Side::Sell, u.ask_price, 100));
+        }
+    };
+    const std::filesystem::path dir = test::TempFile::unique_path();
+    record::Recorder recorder;
+    std::string error;
+    ASSERT_TRUE(recorder.open(dir, error)) << error;
+    const Result r = run(w, c, s, &recorder);
+    ASSERT_TRUE(recorder.close());
+    const auto risk_records = read_risk_records(dir / "risk.bin");
+    std::filesystem::remove_all(dir);
+
+    EXPECT_TRUE(r.killed);
+    ASSERT_EQ(s.order_updates.size(), 5U);
+    EXPECT_EQ(s.order_updates[0].kind, UpdateKind::Fill); // the IOC, at 1010
+    EXPECT_EQ(s.order_updates[1].kind, UpdateKind::Accepted);
+    // The switch trips on the 1400 book update and the resting bid is cancelled at once.
+    EXPECT_EQ(s.order_updates[2].kind, UpdateKind::Cancelled);
+    EXPECT_EQ(s.order_updates[2].ts, 1400U);
+    EXPECT_EQ(s.order_updates[2].removed_qty, 100U);
+    // Every order after that is refused, even ones that would reduce the position.
+    EXPECT_EQ(s.order_updates[3].kind, UpdateKind::Rejected);
+    EXPECT_EQ(s.order_updates[3].reason, RejectReason::KillSwitch);
+    EXPECT_EQ(s.order_updates[4].reason, RejectReason::KillSwitch);
+    EXPECT_EQ(r.position, 100);
+    EXPECT_EQ(r.stats.fills, 1U);
+
+    ASSERT_EQ(risk_records.size(), 3U);
+    EXPECT_EQ(risk_records[0].event, static_cast<std::uint8_t>(record::RiskEventKind::KillSwitch));
+    EXPECT_EQ(risk_records[0].reason, static_cast<std::uint8_t>(risk::KillReason::LossLimit));
+    EXPECT_EQ(risk_records[0].ts, 1400U);
+    // Bought 100 at 1010, marked at 955: 2 x 100 x (955 - 1010).
+    EXPECT_EQ(risk_records[0].value, -11'000);
+    EXPECT_EQ(risk_records[1].event, static_cast<std::uint8_t>(record::RiskEventKind::Reject));
+    EXPECT_EQ(risk_records[1].reason, static_cast<std::uint8_t>(RejectReason::KillSwitch));
+    EXPECT_EQ(risk_records[1].ts, 1500U);
+    EXPECT_EQ(risk_records[2].ts, 1600U);
+}
+
+TEST(KillSwitchRun, DoesNotTripWithinTheLossLimit) {
+    ItchWriter w = session();
+    w.add(1100, kAapl, 1, Side::Sell, 100, "AAPL", 1010)
+        .add(1200, kAapl, 2, Side::Buy, 500, "AAPL", 1000)
+        .del(1300, kAapl, 2)
+        .add(1400, kAapl, 3, Side::Buy, 100, "AAPL", 900);
+    Config c = config_for();
+    c.risk.loss_limit = 5'500; // the loss is exactly 5,500: at the limit, not beyond it
+    ScriptedStrategy s;
+    s.book = [](const BookUpdate& u, Context& ctx) {
+        if (u.ts == 1200) {
+            static_cast<void>(ctx.submit_ioc(kAapl, Side::Buy, 1010, 100));
+        }
+    };
+    const Result r = run(w, c, s);
+    EXPECT_FALSE(r.killed);
+    EXPECT_EQ(r.pnl2, -11'000);
+}
+
+TEST(KillSwitchRun, TooManyRejectsInTheWindowTripsIt) {
+    ItchWriter w = session();
+    for (OrderRef i = 0; i < 6; ++i) {
+        w.add(1100 + i * 100, kAapl, 1 + i, Side::Sell, 100, "AAPL", static_cast<Price>(1010 - i));
+    }
+    Config c = config_for();
+    c.risk.max_order_qty = 10;
+    c.risk.reject_threshold = 3;
+    c.risk.reject_window_ns = 10'000;
+    ScriptedStrategy s;
+    s.book = [](const BookUpdate& u, Context& ctx) {
+        static_cast<void>(ctx.submit_ioc(kAapl, Side::Buy, u.ask_price, 100)); // too big
+    };
+    const Result r = run(w, c, s);
+    EXPECT_TRUE(r.killed);
+    ASSERT_EQ(s.order_updates.size(), 6U);
+    for (std::size_t i = 0; i < 4; ++i) {
+        EXPECT_EQ(s.order_updates[i].reason, RejectReason::MaxOrderQty) << i;
+    }
+    // The fourth reject exceeded the threshold of three; from then on the switch answers.
+    EXPECT_EQ(s.order_updates[4].reason, RejectReason::KillSwitch);
+    EXPECT_EQ(s.order_updates[5].reason, RejectReason::KillSwitch);
+    EXPECT_EQ(r.stats.orders_rejected_by_risk, 6U);
+}
+
+TEST(KillSwitchRun, CancelsOrdersStillOnTheirWayToTheExchange) {
+    ItchWriter w = session();
+    w.add(1100, kAapl, 1, Side::Sell, 100, "AAPL", 1010)
+        .add(1200, kAapl, 2, Side::Buy, 500, "AAPL", 1000)
+        .del(1300, kAapl, 2)
+        .add(1400, kAapl, 3, Side::Buy, 100, "AAPL", 900) // trips here
+        .add(9000, kMsft, 4, Side::Buy, 1, "MSFT", 1);
+    Config c = config_for();
+    c.risk.loss_limit = 1'000;
+    c.latency.order_ns = 0;
+    c.latency.cancel_ns = 300;
+    ScriptedStrategy s;
+    s.book = [](const BookUpdate& u, Context& ctx) {
+        if (u.ts == 1200) {
+            static_cast<void>(ctx.submit_ioc(kAapl, Side::Buy, 1010, 100));
+            static_cast<void>(ctx.submit_limit(kAapl, Side::Buy, 800, 100));
+        }
+    };
+    const Result r = run(w, c, s);
+    EXPECT_TRUE(r.killed);
+    const auto cancelled = of_kind(s, UpdateKind::Cancelled);
+    ASSERT_EQ(cancelled.size(), 1U);
+    EXPECT_EQ(cancelled[0].ts, 1700U); // the kill switch's cancel still pays cancel latency
+    EXPECT_EQ(r.stats.cancels_requested, 1U);
 }
 
 // --- Determinism ---------------------------------------------------------------------------------
