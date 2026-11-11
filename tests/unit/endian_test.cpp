@@ -5,6 +5,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <vector>
 
 namespace itchbt {
 namespace {
@@ -41,6 +42,19 @@ TEST(Endian, SixByteLoadIgnoresNeighbouringBytes) {
     // The two bytes after a timestamp belong to the next field and must not leak in.
     const auto b = bytes_of(0xEE, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0xEE, 0xEE);
     EXPECT_EQ(load_be48(b.data() + 1), 1U);
+}
+
+TEST(Endian, SixByteLoadReadsExactlySixBytes) {
+    // The field must be read without touching the two bytes after it: on the last message of
+    // a file there are none. A heap buffer of exactly six bytes lets AddressSanitizer see an
+    // over-read; the stack arrays in the tests above are folded away by the optimiser and do
+    // not (found by injecting that fault: see DEBUGGING.md).
+    const std::vector<std::byte> exact = {std::byte{0x00}, std::byte{0x00}, std::byte{0x00},
+                                          std::byte{0x00}, std::byte{0x01}, std::byte{0x02}};
+    ASSERT_EQ(exact.size(), 6U);
+    // Through a volatile pointer, so the load cannot be evaluated at compile time.
+    const std::byte* volatile p = exact.data();
+    EXPECT_EQ(load_be48(p), 0x0102U);
 }
 
 TEST(Endian, HighBitSetValuesAreUnsigned) {

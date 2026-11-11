@@ -742,6 +742,137 @@ up to five times. The deleted measurements were repeated under that guard.
 The guard, and the habit that found the problem: results are read before they are published,
 and a number that cannot be true is investigated, not reported.
 
+## EXERCISE (fault injection): reading the 6-byte timestamp as 8 bytes
+
+This is a deliberate exercise, not a bug that occurred. No memory error arose naturally while
+building the project, so the classic one for ITCH parsers was injected to see what would catch
+it. The result changed the test suite.
+
+- Date / commit: 2026-11-12, regression test added in the commit that adds this entry
+- Area: parser
+- Tools: AddressSanitizer
+
+### Injected fault
+`load_be48` was changed from a 2-byte plus a 4-byte load to `load_be<std::uint64_t>(p) >> 16`:
+the "read eight bytes and shift" shortcut, which is correct for every message except one that
+ends within two bytes of the end of its buffer.
+
+### Symptom
+The five tests written specifically for the endian loaders all passed. Twelve other tests
+aborted under the `asan` preset, every one of them a stream ending in a 12-byte system event:
+
+```
+==35975==ERROR: AddressSanitizer: heap-buffer-overflow on address 0x60200000339e
+READ of size 8 at 0x60200000339e thread T0
+    #0 itchbt::itch::decode_system_event(std::byte const*) parser.hpp:101
+    #1 void itchbt::itch::dispatch<itchbt::test::Collector>(std::byte const*, ...) parser.hpp:237
+    #2 itchbt::itch::ParseResult itchbt::itch::parse<itchbt::test::Collector>(...)
+    #3 itchbt::itch::(anonymous namespace)::Parser_DecodesSystemEvent_Test::TestBody() parser_test.cpp:101
+0x6020000033a0 is located 0 bytes after 16-byte region [0x602000003390,0x6020000033a0)
+```
+
+### Investigation
+The report reads directly: an 8-byte read starting two bytes before the end of a 16-byte
+allocation (a 2-byte length plus a 12-byte message, rounded), from the system event decoder.
+The timestamp is at offset 5 of a 12-byte message, so bytes 5 to 12 were read and byte 12 does
+not exist.
+
+The more useful finding was the tests that did *not* fail. `Endian.LoadsSixByteTimestamp` and
+`Endian.SixByteLoadIgnoresNeighbouringBytes` build their input in stack arrays of constants;
+at `-O1` the compiler folds the whole load away, so there is no memory access left for the
+sanitizer to check.
+
+### Root cause (of the gap)
+The fault was caught, but by accident of which message happened to end the streams in other
+tests, not by the test that exists for this function.
+
+### Fix
+The fault was reverted. `Endian.SixByteLoadReadsExactlySixBytes` was added: a heap buffer of
+exactly six bytes, read through a volatile pointer so the load cannot be folded. With the
+fault re-injected it fails on its own:
+
+```
+==36167==ERROR: AddressSanitizer: heap-buffer-overflow on address 0x602000003317
+READ of size 8 at 0x602000003317 thread T0
+```
+
+### Prevention
+That test, plus the fuzz target, whose inputs are exactly-sized heap buffers.
+
+## EXERCISE (fault injection): publishing a ring slot before writing it
+
+This is a deliberate exercise, not a bug that occurred. The recorder and the sharded runner
+passed ThreadSanitizer from their first run, so an ordering bug was injected into the ring
+buffer they share to confirm the tests and the tool would catch one.
+
+- Date / commit: 2026-11-12, no code change kept
+- Area: recorder (shared ring buffer)
+- Tools: ThreadSanitizer
+
+### Injected fault
+In `SpscRing::try_push` the two statements were swapped, so the new tail index was published
+before the slot was written:
+
+```cpp
+tail_.store(tail + 1, std::memory_order_release); // published first
+slots_[tail & mask_] = value;
+```
+
+Single-threaded, every test still passes. Across threads the consumer can see the new tail and
+read a slot the producer is still writing.
+
+### Symptom
+`SpscRing.TwoThreadsTransferEveryItemInOrderIntact` under the `tsan` preset:
+
+```
+WARNING: ThreadSanitizer: data race (pid=36281)
+  Read of size 8 at 0x00010a102dc0 by thread T1:
+    #0 ... SpscRing_TwoThreadsTransferEveryItemInOrderIntact_Test::TestBody()::$_0 ...
+  Previous write of size 8 at 0x00010a102dc0 by main thread:
+    #0 ... SpscRing_TwoThreadsTransferEveryItemInOrderIntact_Test::TestBody() spsc_ring_test.cpp:92
+  Location is heap block of size 192 at 0x00010a102dc0 allocated by main thread:
+    #1 ... TestBody() spsc_ring_test.cpp:73
+```
+
+### Investigation
+The racing address is inside a 192-byte heap block allocated where the test constructs the
+ring: eight 24-byte slots. The write is the producer's line 92 (`try_push`) and the read is in
+the consumer lambda. So a slot is being read while it is written, which can only happen if the
+consumer was told the slot existed too early. That points straight at the order of the store
+to `tail_` and the slot write.
+
+### Root cause
+The release store is what makes the slot's contents visible to the consumer; it has to come
+after them.
+
+### Fix
+The fault was reverted. No change was needed: the existing test and CI's TSan job catch it.
+
+### Prevention
+The two-thread transfer test deliberately uses an 8-slot ring so that "full" and "empty" are
+hit constantly, and it checks every item's three fields against its sequence number, so even
+without TSan a torn read would fail it.
+
+## Coverage against the specification's list
+
+The specification asks for entries covering as many of eight categories as arise.
+
+| Category | Arose naturally? | Entries |
+| --- | --- | --- |
+| Memory error | No | One labelled exercise (8-byte timestamp read), which exposed a real gap in the tests |
+| Undefined behaviour | Yes | Notional overflow, found by UBSan |
+| Data race or ordering bug | No | One labelled exercise (ring slot published early) |
+| Crash analysed after the fact | No | None. No crash occurred outside sanitizer aborts, and an attempted exercise with `lldb` was abandoned |
+| Data discrepancy traced through the pipeline | Yes | Crossed book at reopening crosses; after-hours marks |
+| Performance regression | Yes | Throughput halved by Low Power Mode; runs measured during sleep |
+| Logic bug caught by a watchpoint or reverse execution | No | None. `rr` does not exist on macOS, and no bug here needed a watchpoint |
+| System-level surprise | Yes | Page faults making `mmap` slower than `read()`; Apple's assembler dropping an instruction; the unlinkable toolchain |
+
+The other entries are logic and tooling bugs caught by tests, by CI or by reading output:
+the time parser, the config loader, the flat map's empty marker, two wrong tests, a broken
+commit, unformatted files, a vacuous fingerprint, a misleading micro-benchmark and three
+script bugs.
+
 ## Entry template
 
 ```markdown
