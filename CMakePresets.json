@@ -26,6 +26,19 @@
             }
         },
         {
+            "name": "timing",
+            "displayName": "Release with per-message latency timing compiled in",
+            "inherits": "base",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "CMAKE_CXX_FLAGS_RELEASE": "-O2 -DNDEBUG",
+                "ITCHBT_NATIVE": "ON",
+                "ITCHBT_BUILD_BENCH": "ON",
+                "ITCHBT_BUILD_TESTS": "OFF",
+                "ITCHBT_TIMING": "ON"
+            }
+        },
+        {
             "name": "relwithdebinfo",
             "displayName": "Release with symbols and frame pointers, for profiling",
             "inherits": "base",
@@ -72,6 +85,7 @@
         { "name": "debug", "configurePreset": "debug" },
         { "name": "release", "configurePreset": "release" },
         { "name": "relwithdebinfo", "configurePreset": "relwithdebinfo" },
+        { "name": "timing", "configurePreset": "timing" },
         { "name": "asan", "configurePreset": "asan" },
         { "name": "tsan", "configurePreset": "tsan" },
         { "name": "fuzz", "configurePreset": "fuzz" }

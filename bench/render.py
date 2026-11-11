@@ -62,7 +62,9 @@ def machine_table(directory: Path, sysinfo: dict) -> str:
         ("Compiler", sysinfo.get("compiler", "?")),
         ("CPU governor", sysinfo.get("governor", "?")),
         ("Transparent huge pages", sysinfo.get("transparent_hugepage", "?")),
-        ("Power", sysinfo.get("power", "n/a")),
+        ("Power", sysinfo.get("power", "n/a")
+         + {"1": ", Low Power Mode ON", "0": ", Low Power Mode off"}.get(
+             sysinfo.get("low_power_mode", ""), "")),
         ("Date (UTC)", sysinfo.get("date_utc", "?")),
     ]
     lines = ["| Item | Value |", "| --- | --- |"]

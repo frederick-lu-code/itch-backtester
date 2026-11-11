@@ -36,6 +36,8 @@ struct Result {
     std::vector<double> run_seconds;
     std::vector<std::pair<std::string, std::string>> notes;
     std::vector<std::pair<std::string, std::uint64_t>> counters;
+    /// Pre-formatted `"key": value` members to include as they are, for nested data.
+    std::vector<std::string> raw_members;
 
     /// Writes the result as JSON. Returns false if the file cannot be written.
     [[nodiscard]] bool write(const std::string& path) const {
@@ -52,6 +54,9 @@ struct Result {
         }
         for (const auto& [key, value] : counters) {
             std::fprintf(out, "  \"%s\": %" PRIu64 ",\n", key.c_str(), value);
+        }
+        for (const std::string& member : raw_members) {
+            std::fprintf(out, "  %s,\n", member.c_str());
         }
         std::fputs("  \"run_seconds\": [", out);
         for (std::size_t i = 0; i < run_seconds.size(); ++i) {

@@ -49,6 +49,7 @@ OS="$(uname -s)"
         field timebase_hz "$(sysctl -n hw.tbfrequency)"; echo ","
         field page_size "$(sysctl -n hw.pagesize)"; echo ","
         field power "$(pmset -g batt 2>/dev/null | head -1)"; echo ","
+        field low_power_mode "$(pmset -g 2>/dev/null | awk '/lowpowermode/ {print $2}')"; echo ","
         field governor "not applicable (macOS)"; echo ","
         field transparent_hugepage "not applicable (macOS)"; echo ","
     fi

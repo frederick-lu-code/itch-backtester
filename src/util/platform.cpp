@@ -48,4 +48,13 @@ std::uint64_t peak_rss_bytes() {
 #endif
 }
 
+PageFaults page_faults() {
+    struct rusage usage {};
+    if (getrusage(RUSAGE_SELF, &usage) != 0) {
+        return {};
+    }
+    return {static_cast<std::uint64_t>(usage.ru_minflt),
+            static_cast<std::uint64_t>(usage.ru_majflt)};
+}
+
 } // namespace itchbt

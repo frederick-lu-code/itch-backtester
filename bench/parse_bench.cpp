@@ -129,6 +129,10 @@ int run(int argc, char** argv) {
     }
     result.counters.emplace_back("checksum_low32", reference_checksum & 0xFFFFFFFFU);
     result.counters.emplace_back("peak_rss_bytes", peak_rss_bytes());
+    // Whole-process totals over warm-up and measured runs; divide by the run count.
+    result.counters.emplace_back("minor_page_faults_total", page_faults().minor);
+    result.counters.emplace_back("major_page_faults_total", page_faults().major);
+    result.counters.emplace_back("runs_including_warmup", warmup + runs);
     if (!result.write(out_path)) {
         std::fprintf(stderr, "parse_bench: cannot write %s\n", out_path.c_str());
         return 1;

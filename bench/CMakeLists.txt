@@ -6,3 +6,7 @@ endfunction()
 
 itchbt_add_bench(parse_bench parse_bench.cpp)
 itchbt_add_bench(book_bench book_bench.cpp)
+
+# The prefetch experiment from the optimisation log, kept buildable so it can be re-measured.
+itchbt_add_bench(book_bench_prefetch book_bench.cpp)
+target_compile_definitions(book_bench_prefetch PRIVATE ITCHBT_BENCH_PREFETCH=1)
