@@ -10,4 +10,4 @@ if [[ "${1:-}" == "--check" ]]; then
     MODE=(--dry-run --Werror)
 fi
 
-git ls-files -z -- '*.cpp' '*.hpp' | xargs -0 "${CLANG_FORMAT:-clang-format}" "${MODE[@]}"
+git ls-files -z --cached --others --exclude-standard -- '*.cpp' '*.hpp' | xargs -0 "${CLANG_FORMAT:-clang-format}" "${MODE[@]}"

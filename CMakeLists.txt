@@ -10,6 +10,7 @@ option(ITCHBT_BUILD_TESTS "Build unit, property and integration tests" ON)
 option(ITCHBT_BUILD_BENCH "Build benchmarks" OFF)
 option(ITCHBT_FUZZ "Build libFuzzer targets (needs upstream Clang)" OFF)
 option(ITCHBT_NATIVE "Tune optimised builds for the build machine's CPU" OFF)
+option(ITCHBT_BASELINE_BOOK "Build the engine on the baseline (standard library) order book" OFF)
 option(ITCHBT_TIMING "Compile in per-message latency timing" OFF)
 set(ITCHBT_SANITIZE "" CACHE STRING "Sanitizers to enable: empty, 'address,undefined' or 'thread'")
 
@@ -59,6 +60,9 @@ target_compile_features(itchbt PUBLIC cxx_std_20)
 target_link_libraries(itchbt PRIVATE itchbt_warnings tomlplusplus::tomlplusplus)
 if(ITCHBT_TIMING)
     target_compile_definitions(itchbt PUBLIC ITCHBT_TIMING=1)
+endif()
+if(ITCHBT_BASELINE_BOOK)
+    target_compile_definitions(itchbt PUBLIC ITCHBT_BASELINE_BOOK=1)
 endif()
 
 # Recorded in run.json. Captured at configure time, so re-run cmake after committing if the

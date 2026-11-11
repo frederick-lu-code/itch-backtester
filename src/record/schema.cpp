@@ -1,11 +1,11 @@
 #include "itchbt/record/schema.hpp"
 
-#include <cstddef>
-#include <initializer_list>
-
 #include "itchbt/record/records.hpp"
 #include "itchbt/sim/order_state.hpp"
 #include "itchbt/sim/types.hpp"
+
+#include <cstddef>
+#include <initializer_list>
 
 namespace itchbt::record {
 
@@ -20,8 +20,10 @@ struct Field {
 // offsetof on these standard-layout structs is well defined; the macro keeps each field's
 // name, offset and size together so none can be mistyped separately.
 // NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
-#define ITCHBT_FIELD(Record, member)                                                              \
-    Field { #member, offsetof(Record, member), sizeof(Record::member) }
+#define ITCHBT_FIELD(Record, member)                                                               \
+    Field {                                                                                        \
+        #member, offsetof(Record, member), sizeof(Record::member)                                  \
+    }
 
 std::string record_json(const char* name, const char* file, RecordType type, std::size_t size,
                         std::initializer_list<Field> fields) {
@@ -63,9 +65,10 @@ const char* order_event_name(OrderEventKind kind) {
 } // namespace
 
 std::string schema_json() {
-    std::string json = "{\n  \"format_version\": " + std::to_string(kFormatVersion) +
-                       ",\n  \"magic\": \"ITCHBT\",\n  \"header_size\": " +
-                       std::to_string(sizeof(FileHeader)) + ",\n  \"records\": {\n";
+    std::string json =
+        "{\n  \"format_version\": " + std::to_string(kFormatVersion) +
+        ",\n  \"magic\": \"ITCHBT\",\n  \"header_size\": " + std::to_string(sizeof(FileHeader)) +
+        ",\n  \"records\": {\n";
     json += record_json("orders", "orders.bin", RecordType::Order, sizeof(OrderRecord),
                         {ITCHBT_FIELD(OrderRecord, ts), ITCHBT_FIELD(OrderRecord, order_id),
                          ITCHBT_FIELD(OrderRecord, shares_ahead), ITCHBT_FIELD(OrderRecord, price),

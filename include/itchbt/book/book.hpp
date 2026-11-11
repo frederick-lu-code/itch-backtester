@@ -8,6 +8,7 @@
 // optimised one (M6) swaps both. They must agree on every message.
 
 #include "itchbt/book/baseline.hpp"
+#include "itchbt/book/optimised.hpp"
 #include "itchbt/book/types.hpp"
 #include "itchbt/itch/messages.hpp"
 
@@ -302,5 +303,13 @@ ReplaceChange apply(Books& books, const itch::OrderReplace& m) {
 
 /// The reference implementation: standard-library containers throughout.
 using BaselineBooks = BookSet<StdOrderMap, MapLevels>;
+
+/// The fast implementation: flat hash map for orders, sorted vector per side for levels.
+using OptimisedBooks = BookSet<FlatOrderMap, VectorLevels>;
+
+// Intermediate combinations, kept selectable so each step in the optimisation log can be
+// re-measured.
+using FlatOrderBooks = BookSet<FlatOrderMap, MapLevels>;
+using BinaryLevelBooks = BookSet<FlatOrderMap, BinaryVectorLevels>;
 
 } // namespace itchbt::book

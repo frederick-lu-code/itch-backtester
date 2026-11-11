@@ -9,6 +9,12 @@
 
 namespace itchbt::book {
 
+#ifdef ITCHBT_BASELINE_BOOK
 using DefaultBooks = BaselineBooks;
+inline constexpr const char* kDefaultBookName = "baseline";
+#else
+using DefaultBooks = OptimisedBooks;
+inline constexpr const char* kDefaultBookName = "optimised";
+#endif
 
 } // namespace itchbt::book

@@ -8,6 +8,7 @@
 
 namespace itchbt::test {
 
-using BookTypes = ::testing::Types<book::BaselineBooks>;
+using BookTypes = ::testing::Types<book::BaselineBooks, book::OptimisedBooks, book::FlatOrderBooks,
+                                   book::BinaryLevelBooks>;
 
 } // namespace itchbt::test

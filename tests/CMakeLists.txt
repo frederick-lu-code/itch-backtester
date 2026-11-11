@@ -27,6 +27,10 @@ target_link_libraries(unit_tests PRIVATE itchbt_test_support itchbt_warnings GTe
 target_compile_definitions(unit_tests PRIVATE ITCHBT_CONFIG_DIR="${PROJECT_SOURCE_DIR}/configs")
 gtest_discover_tests(unit_tests)
 
+add_executable(property_tests property/book_property_test.cpp)
+target_link_libraries(property_tests PRIVATE itchbt_test_support itchbt_warnings GTest::gmock_main)
+gtest_discover_tests(property_tests)
+
 add_executable(integration_tests integration/engine_test.cpp integration/strategies_test.cpp)
 target_link_libraries(integration_tests PRIVATE itchbt_test_support itchbt_warnings
                                                 GTest::gmock_main)
