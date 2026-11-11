@@ -5,3 +5,4 @@ function(itchbt_add_bench name)
 endfunction()
 
 itchbt_add_bench(parse_bench parse_bench.cpp)
+itchbt_add_bench(book_bench book_bench.cpp)

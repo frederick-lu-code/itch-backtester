@@ -53,4 +53,10 @@ if wanted parse; then
     done
 fi
 
+if wanted book; then
+    echo "== book_build baseline"
+    "$BIN/book_bench" --input "$INPUT" --book baseline --runs "$RUNS" \
+        ${CPU_ARGS[@]+"${CPU_ARGS[@]}"} --out "$OUT/book_baseline.json"
+fi
+
 echo "Done. Regenerate the tables with: python3 bench/render.py"

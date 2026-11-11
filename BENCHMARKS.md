@@ -60,6 +60,15 @@ timed region; `read` uses `read()` into a 1 MiB buffer. The page cache is warm i
 | read/frame | 268,744,780 | 178.8 (162.1 to 186.8) | 5.5 (5.0 to 5.7) | 1.50 (1.44 to 1.66) | 10 |
 <!-- END GENERATED: parse_only -->
 
+## Book build
+
+The full file through the parser into the order book for all 8,906 symbols, with no strategy.
+Construction of the book is inside the timed region. The fingerprint of the final books is
+checked to be identical on every run.
+
+<!-- BEGIN GENERATED: book_build -->
+<!-- END GENERATED: book_build -->
+
 ## Optimisation log
 
 Empty. One row per change from M6, including changes that did not help.
