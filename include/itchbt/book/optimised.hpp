@@ -141,7 +141,7 @@ private:
     }
 
     void grow() {
-        std::vector<Slot> old = std::move(slots_);
+        const std::vector<Slot> old = std::move(slots_);
         allocate(old.size() * 2);
         for (const Slot& slot : old) {
             if (slot.key != kEmpty) {

@@ -7,6 +7,7 @@
 // magnitude. The whole thing is one array of counters: recording a sample is a count-leading-
 // zeros, a shift and an increment, and it never allocates.
 
+#include <algorithm>
 #include <array>
 #include <bit>
 #include <cstddef>
@@ -44,7 +45,8 @@ public:
             return 0;
         }
         const auto wanted = static_cast<std::uint64_t>(fraction * static_cast<double>(total_));
-        const std::uint64_t target = wanted == 0 ? 1 : (wanted > total_ ? total_ : wanted);
+        // At least one sample, at most all of them.
+        const std::uint64_t target = std::clamp<std::uint64_t>(wanted, 1, total_);
         std::uint64_t seen = 0;
         for (std::size_t i = 0; i < kBuckets; ++i) {
             seen += counts_[i];
