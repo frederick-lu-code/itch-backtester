@@ -66,52 +66,78 @@ def trade(ts: int, locate: int, shares: int, symbol: str, price: int, match: int
                    + _symbol(symbol) + struct.pack(">IQ", price, match))
 
 
-def random_stream(rng, symbols: list[str], events: int, extra_symbol: str = "OTHER") -> bytes:
-    """A valid random order flow over `symbols`, plus one symbol the tests do not ask for."""
+def trading_action(ts: int, locate: int, symbol: str, state: str) -> bytes:
+    return _record(_header(b"H", locate, ts) + _symbol(symbol) + state.encode() + b" " + b"    ")
+
+
+def random_stream(rng, symbols: list[str], events: int, extra_symbol: str = "OTHER",
+                  session: bool = False, step_ns: int = 1) -> bytes:
+    """A valid random order flow over `symbols`, plus one symbol the tests do not ask for.
+
+    With session=False, prices are drawn freely around the mid, so books are often crossed:
+    good for exercising the book. With session=True the stream has a trading session (symbols
+    released, market open, market close) and buys stay at or below the mid with sells above
+    it, so there is a clean two-sided market for a strategy to trade against.
+    """
     all_symbols = symbols + [extra_symbol]
+    mid = 1_000_000
     out = [system_event(1, "O")]
     for i, symbol in enumerate(all_symbols):
         out.append(stock_directory(2, 10 + i, symbol))
-    live: dict[int, tuple[int, int]] = {}  # ref -> (locate, shares)
+        if session:
+            out.append(trading_action(3, 10 + i, symbol, "T"))
+    start = 100
+    if session:
+        out.append(system_event(50, "Q"))
+
+    def price_for(side: str) -> int:
+        if not session:
+            return mid + rng.randrange(-15, 16) * 100
+        offset = rng.randrange(0, 12) * 100
+        return mid - offset if side == "B" else mid + 100 + offset
+
+    live: dict[int, tuple[int, int, str]] = {}  # ref -> (locate, shares, side)
     next_ref = 1
-    for ts in range(100, 100 + events):
+    ts = start
+    for _ in range(events):
+        ts += step_ns
         action = rng.random()
         if not live or action < 0.45:
             index = rng.randrange(len(all_symbols))
             shares = rng.randrange(1, 20) * 100
-            # A narrow price range, so levels fill up and empty out repeatedly.
-            price = 1_000_000 + rng.randrange(-15, 16) * 100
-            out.append(add(ts, 10 + index, next_ref, rng.choice("BS"), shares,
-                           all_symbols[index], price, "GSCO" if rng.random() < 0.1 else None))
-            live[next_ref] = (10 + index, shares)
+            side = rng.choice("BS")
+            out.append(add(ts, 10 + index, next_ref, side, shares, all_symbols[index],
+                           price_for(side), "GSCO" if rng.random() < 0.1 else None))
+            live[next_ref] = (10 + index, shares, side)
             next_ref += 1
             continue
         ref = rng.choice(list(live))
-        locate, shares = live[ref]
+        locate, shares, side = live[ref]
         if action < 0.60:
             out.append(delete(ts, locate, ref))
             del live[ref]
-        elif action < 0.72:
+        elif action < 0.75:
             take = rng.randrange(1, shares + 1)
             out.append(execute(ts, locate, ref, take))
-            live[ref] = (locate, shares - take)
-        elif action < 0.78:
+            live[ref] = (locate, shares - take, side)
+        elif action < 0.80:
             take = rng.randrange(1, shares + 1)
             out.append(execute_with_price(ts, locate, ref, take, 999_900, rng.random() < 0.5))
-            live[ref] = (locate, shares - take)
-        elif action < 0.88:
+            live[ref] = (locate, shares - take, side)
+        elif action < 0.90:
             take = rng.randrange(1, shares + 1)
             out.append(cancel(ts, locate, ref, take))
-            live[ref] = (locate, shares - take)
+            live[ref] = (locate, shares - take, side)
         else:
             new_shares = rng.randrange(1, 20) * 100
-            price = 1_000_000 + rng.randrange(-15, 16) * 100
-            out.append(replace(ts, locate, ref, next_ref, new_shares, price))
+            out.append(replace(ts, locate, ref, next_ref, new_shares, price_for(side)))
             del live[ref]
-            live[next_ref] = (locate, new_shares)
+            live[next_ref] = (locate, new_shares, side)
             next_ref += 1
             continue
         if ref in live and live[ref][1] == 0:
             del live[ref]
-    out.append(system_event(10**12, "C"))
+    if session:
+        out.append(system_event(ts + step_ns, "M"))
+    out.append(system_event(ts + 2 * step_ns, "C"))
     return b"".join(out)

@@ -49,7 +49,7 @@ def test_book_check_passes_a_valid_stream(tmp_path, tool):
 
 
 def trading_action(ts: int, state: str) -> bytes:
-    return fx._record(fx._header(b"H", 7, ts) + b"AAPL    " + state.encode() + b" " + b"    ")
+    return fx.trading_action(ts, 7, "AAPL", state)
 
 
 def test_book_check_flags_a_crossed_book_in_regular_hours(tmp_path, tool):
