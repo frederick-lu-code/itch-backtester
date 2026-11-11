@@ -21,7 +21,8 @@
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release",
                 "CMAKE_CXX_FLAGS_RELEASE": "-O2 -DNDEBUG",
-                "ITCHBT_NATIVE": "ON"
+                "ITCHBT_NATIVE": "ON",
+                "ITCHBT_BUILD_BENCH": "ON"
             }
         },
         {
@@ -31,7 +32,8 @@
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "RelWithDebInfo",
                 "CMAKE_CXX_FLAGS_RELWITHDEBINFO": "-O2 -g -DNDEBUG -fno-omit-frame-pointer",
-                "ITCHBT_NATIVE": "ON"
+                "ITCHBT_NATIVE": "ON",
+                "ITCHBT_BUILD_BENCH": "ON"
             }
         },
         {

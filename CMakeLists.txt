@@ -7,6 +7,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 option(ITCHBT_BUILD_TESTS "Build unit, property and integration tests" ON)
+option(ITCHBT_BUILD_BENCH "Build benchmarks" OFF)
 option(ITCHBT_FUZZ "Build libFuzzer targets (needs upstream Clang)" OFF)
 option(ITCHBT_NATIVE "Tune optimised builds for the build machine's CPU" OFF)
 option(ITCHBT_TIMING "Compile in per-message latency timing" OFF)
@@ -46,16 +47,22 @@ add_library(itchbt_warnings INTERFACE)
 target_compile_options(itchbt_warnings INTERFACE -Wall -Wextra -Wpedantic -Wconversion -Wshadow
                                                  -Werror)
 
-# Header-only until M1 adds the non-template sources under src/.
-add_library(itchbt INTERFACE)
+# Most of the engine is templates in include/; src/ holds what does not need to inline.
+add_library(itchbt STATIC src/itch/reader.cpp src/util/platform.cpp)
 add_library(itchbt::itchbt ALIAS itchbt)
-target_include_directories(itchbt INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/include)
-target_compile_features(itchbt INTERFACE cxx_std_20)
+target_include_directories(itchbt PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_compile_features(itchbt PUBLIC cxx_std_20)
+target_link_libraries(itchbt PRIVATE itchbt_warnings)
 if(ITCHBT_TIMING)
-    target_compile_definitions(itchbt INTERFACE ITCHBT_TIMING=1)
+    target_compile_definitions(itchbt PUBLIC ITCHBT_TIMING=1)
 endif()
 
 include(cmake/Dependencies.cmake)
+
+add_subdirectory(apps)
+if(ITCHBT_BUILD_BENCH)
+    add_subdirectory(bench)
+endif()
 
 if(ITCHBT_BUILD_TESTS)
     enable_testing()
