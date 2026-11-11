@@ -215,7 +215,9 @@ decode_order_executed_with_price(const std::byte* m) noexcept {
 /// Decodes one validated message and passes it to the matching handler overload.
 ///
 /// A handler provides on(const T&) for each struct in messages.hpp and
-/// on_skipped(const Header&) for the types the engine recognises but does not use.
+/// on_skipped(const Header&) for the types the engine recognises but does not use. It may also
+/// provide at(offset), called before each message with the offset of its record, and done(),
+/// checked after each message to stop early. Neither costs anything when absent.
 template <typename Handler>
 inline void dispatch(const std::byte* m, Handler& handler) {
     switch (detail::char_at(m, 0)) {
@@ -307,6 +309,12 @@ parse(std::span<const std::byte> data, Handler& handler,
         dispatch(message, handler);
         ++result.messages;
         pos += kLengthPrefixSize + length;
+        // Handlers that can finish early (a tool stopping at a time of day) opt in with done().
+        if constexpr (requires { handler.done(); }) {
+            if (handler.done()) {
+                break;
+            }
+        }
     }
     result.offset = pos;
     return result;

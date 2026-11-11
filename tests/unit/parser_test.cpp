@@ -304,6 +304,35 @@ TEST(Parser, StopsAtMaxMessages) {
     EXPECT_EQ(r.offset, 2U * (2 + 19)); // resumable from here
 }
 
+TEST(Parser, ReportsRecordOffsetsToHandlersThatAskForThem) {
+    struct OffsetHandler : NullHandler {
+        using NullHandler::on;
+        std::vector<std::uint64_t> offsets;
+        void at(std::uint64_t offset) { offsets.push_back(offset); }
+    };
+    ItchWriter w;
+    w.del(1, 1, 1).add(2, 1, 2, Side::Buy, 100, "AAPL", 10).del(3, 1, 2);
+    OffsetHandler h;
+    ASSERT_TRUE(parse(w.bytes(), h).ok());
+    EXPECT_EQ(h.offsets, (std::vector<std::uint64_t>{0, 21, 21 + 38}));
+}
+
+TEST(Parser, StopsWhenTheHandlerIsDone) {
+    struct StopAfterTwo : NullHandler {
+        using NullHandler::on;
+        int seen = 0;
+        void on(const OrderDelete& /*m*/) { ++seen; }
+        [[nodiscard]] bool done() const { return seen == 2; }
+    };
+    ItchWriter w;
+    w.del(1, 1, 1).del(2, 1, 2).del(3, 1, 3);
+    StopAfterTwo h;
+    const ParseResult r = parse(w.bytes(), h);
+    EXPECT_TRUE(r.ok());
+    EXPECT_EQ(r.messages, 2U);
+    EXPECT_EQ(r.offset, 42U);
+}
+
 TEST(Parser, TruncationAtEveryByteIsReportedNotCrashed) {
     ItchWriter w;
     w.del(1, 1, 1).add(2, 1, 2, Side::Buy, 100, "AAPL", 10);
