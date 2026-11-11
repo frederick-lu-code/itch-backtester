@@ -127,3 +127,198 @@ Python job has to build the C++ tools first.
 **K9. Published closing prices come from Yahoo Finance's chart API.** It returns split-adjusted
 closes together with the split list, so the adjustment can be undone mechanically and shown.
 The script is local-only; CI never touches the network for data.
+
+## Simulation
+
+**S1. One event queue for everything delayed.** Orders in flight, cancels in flight, order
+updates on their way back and timers are all events in one fixed-capacity binary heap ordered
+by release time, ties broken by the order they were queued. Alternative: separate queues per
+kind, merged at release. One queue makes the tie-break rule a single line and the total order
+obvious, which is what determinism rests on.
+
+**S2. Latency in both directions; the firm learns late.** An action takes effect `order_ns` or
+`cancel_ns` after it is sent. Every update from the exchange (accept, fill, cancel, exchange
+reject) reaches the strategy `ack_ns` after it happened. The specification names the delay for
+acknowledgements only; applying it to every update means the strategy and the risk gate never
+know something the exchange has not had time to tell them. Consequence: `ctx.position()` is
+the position as of the fills delivered so far, not the true position at the exchange.
+
+**S3. Pre-trade rejects are immediate.** The specification says the checks run synchronously.
+A risk reject is delivered as the very next event, at the same timestamp, with no latency.
+
+**S4. Market data is not delayed.** The strategy sees each book change at its ITCH timestamp.
+Only its own orders are subject to latency. Simpler than modelling a feed delay, and it is
+the more common convention; a feed delay would be one more event kind.
+
+**S5. Order ids are per symbol.** An id is the stock locate in the top bits and a per-symbol
+counter below. Alternative: one global counter. Per-symbol ids depend only on that symbol's
+history, which is what lets a sharded run reproduce single-threaded output byte for byte.
+
+**S6. Symbols are resolved by a pre-scan of the directory.** A strategy names symbols, the
+engine works in locates, and locates are only known from the file's stock directory messages.
+`prepare()` scans the file up to the first order (the directory always precedes it), so
+`on_start` can already resolve names and an unknown symbol is an error before the run begins.
+
+**S7. The exchange and risk gate are configured late, not constructed late.** They need the
+traded locates, known only after the pre-scan. The first version held them in `std::optional`;
+clang-tidy could not prove any access was checked and flagged every use. They are now plain
+members with a `configure()` method, which also removes an indirection from the hot path.
+
+**S8. The state machine is one enum and one table, and "cancel requested" is a separate
+flag.** The specified table has no edge from `PartiallyFilled` to `Cancelled` and allows
+`PendingCancel` to go back to `PartiallyFilled` on a fill. So a pending cancel cannot be
+remembered in the state alone. Every cancellation, including end-of-day expiry, passes through
+`PendingCancel`, exactly as the table requires.
+
+**S9. An IOC stays `PendingNew` through partial fills.** The table gives an IOC only
+`PendingNew -> Filled` and `PendingNew -> Cancelled`. Its partial fills are reported with the
+state unchanged and its end state follows. No `Accepted` update is sent for an IOC.
+
+**S10. Fill model choices beyond the specification's rules.**
+- Executions that are part of a cross (non-printable) move the queue but never fill a
+  simulated order: auctions are a stated non-goal.
+- Trades against hidden orders (`P`) can fill by trade-through only. The feed does not say
+  which side was resting, so a hidden trade exactly at our price is not counted as queue
+  progress. Conservative.
+- A resting order whose price the historical book later crosses is not filled until a
+  historical execution prints through it. Conservative, and it follows the specification's
+  rules literally.
+- Two simulated orders at one price do not queue behind each other. Optimistic, and part of
+  "no market impact".
+- A marketable limit order's queue position is taken before its sweep, against the book as it
+  stood on arrival.
+
+**S11. Positions are marked only while the symbol can trade.** See `DEBUGGING.md`. After hours
+the visible book is not a market.
+
+**S12. `build_all_books` is a switch, and it cannot change results.** Building 8,906 books to
+trade ten symbols is nine tenths of the run time. With it off, messages for untraded symbols
+are skipped before the book. Tests and a full-day real run confirm the four output files are
+byte-identical either way.
+
+**S13. The strategy API has one addition: `ctx.tradable(symbol)`.** Without it a strategy
+cannot tell the session is closed and learns only from a stream of rejects, which then trips
+the reject-rate kill switch. Also added: `symbols()`, `symbol_name()`, `find_symbol()`.
+
+**S14. A strategy must not resubmit from inside a reject.** A reject is delivered at the same
+timestamp it was caused, so resubmitting at once loops forever at one instant. The sample
+strategies wait for the next book update. Documented rather than prevented: a cap on events
+per timestamp would be a second, hidden rate limit.
+
+**S15. `run.json` is deterministic except for its last member.** The specification asks for
+wall time in `run.json` and for byte-identical output. Those conflict. The four `.bin` files
+are byte-identical between runs; `run.json` is identical except for the final `timing` object
+(wall time and recorder stall counts), which is last and on its own line so the rest can be
+compared textually.
+
+**S16. SHA-256 is written in the project.** About 80 lines, tested against the FIPS vectors,
+used once per run. Adding a cryptography dependency for that would have needed the owner's
+approval and brought far more than is used. `--skip-input-hash` exists because hashing 8 GB
+takes longer than a traded-symbols-only backtest.
+
+## Risk
+
+**R1. Integer arithmetic, with PnL held doubled.** The mid of an odd-width spread is half a
+price unit. Marks are kept as bid + ask and PnL as twice its value; the division by two
+happens once, when a number is printed. No rounding anywhere in the engine.
+
+**R2. Total PnL is exact; the realised/unrealised split uses average cost.** Total is cash
+plus position at mid, which needs no cost basis. The split needs one; closing part of a
+position removes the same fraction of its cost, with truncating division. The rounding (under
+one price unit per fill) lands in the split and never in the total.
+
+**R3. Checks run in a fixed, documented order and the first failure wins.** Kill switch,
+validity, session, halt, quantity, notional, collar, position, open orders, gross notional,
+rate. The rate limit is last so that an order rejected for another reason does not spend a
+token.
+
+**R4. Worst-case position counts each side separately.** A buy is checked against position
+plus all open buys plus itself; open sells are not allowed to offset it, because they may
+never fill.
+
+**R5. Gross notional is positions at mid plus open orders at their limit prices plus the new
+order.** The specification says "maximum gross notional across symbols" without defining the
+treatment of open orders. Counting them at limit price is the conservative reading.
+
+**R6. Cancels are never rate limited or rejected.** A risk control that can stop you
+withdrawing an order is worse than none.
+
+**R7. The kill switch cancels but does not liquidate.** As specified: it cancels all open
+orders and rejects new ones. It does not flatten positions, so PnL keeps moving afterwards.
+On the reference day the demo config trips at 09:30:51 down 25 dollars and ends the day up
+750 on the position it was holding.
+
+**R8. A hard ceiling of 2^56 on notional, whatever the config says.** See `DEBUGGING.md`. It
+is what makes the gate's own arithmetic safe against absurd orders.
+
+**R9. Money limits are whole dollars in the config, price units in the engine.** Fewer zeros
+to mistype in a file a person edits. `run.json` reports them in price units, as held.
+
+## Recorder
+
+**C1. Explicit padding, not `#pragma pack`.** Records use natural alignment with named padding
+fields, and `static_assert`s on size and on having no padding bits. The files are "packed" in
+the sense that matters and no field access is unaligned.
+
+**C2. Events are recorded where and when they happen.** Strategy-side events (submitted,
+cancel requested, risk reject) at strategy time, exchange-side events at exchange time. Each
+file is therefore in time order without sorting.
+
+**C3. `bbo.bin` covers the configured symbols, not "symbols the strategy traded".** Which
+symbols a strategy will trade is not known until it has, and markouts need the top of book
+from before the first fill. Recording every configured symbol is a superset and is
+deterministic.
+
+**C4. One ring, tagged slots.** The four files share one single-producer single-consumer ring
+of 56-byte slots (file tag, size, bytes). Alternative: a ring per file. One ring keeps a
+single writer thread simple and preserves each file's order trivially.
+
+**C5. A full ring blocks the engine and is counted.** As specified. The stall is timed with
+the wall clock, which is the only place engine-thread code reads one; the reading goes to
+`run.json` and nowhere else.
+
+**C6. The writer sleeps 50 microseconds when idle.** A spinning writer would burn a core for
+the whole run to save nothing: the engine waits on the writer only when the ring is full, and
+then there is work.
+
+**C7. Two declarations of each layout, compared by a test.** As specified, C++ structs and
+NumPy dtypes. `backtest --print-schema` prints names, offsets and sizes from `offsetof` and
+the Python test compares every field, not only total sizes. The same dump carries the
+enumeration names, so those are compared too.
+
+## Analysis
+
+**A1. The notebook's cells are executed by a test.** The notebook is the deliverable, so a
+test runs its code cells against a real run. It is committed without outputs: outputs would
+put derived market data and one day's results into the repository.
+
+**A2. Markouts beyond the end of the session are missing, not stale.** A fill 30 seconds
+before the close has no 60-second markout.
+
+**A3. Jupyter is not in the pinned requirements.** The specification pins numpy, pandas,
+pyarrow, matplotlib and pytest. `requirements-notebook.txt` adds what is needed to open or
+render the notebook; nothing in CI needs it.
+
+## Performance
+
+**F1. The engine's book is chosen at compile time by one alias.** `-DITCHBT_BASELINE_BOOK=ON`
+selects the standard-library book. The book benchmark instead instantiates every combination
+side by side in one binary, so a comparison never depends on two builds.
+
+**F2. The flat map stores reference + 1 and erases by backward shift.** Zero as the empty
+marker makes a fresh table a `memset`. Backward-shift deletion leaves no tombstones, which
+matters when 140 million orders pass through a table that never holds more than 2 million.
+
+**F3. Level search is a linear scan from the best.** Measured against binary search; see the
+optimisation log.
+
+**F4. Zero allocation is a property of sizing, and the test says so.** The order store is
+sized from `expected_orders` and traded symbols' level arrays from `level_reserve`. With those
+adequate, a counting `operator new` sees zero allocations on the engine thread for every
+strategy. With all 8,906 books built, untraded symbols' level arrays still grow on demand;
+those are amortised vector growths, not per-message allocations. A companion test shows that
+undersized stores do allocate and that the rehash counter reports it.
+
+**F5. Latency timing is a separate build.** `-DITCHBT_TIMING=ON` adds a counter read before and
+after every message. Throughput is quoted from the untimed build and the cost of timing is
+reported beside the latencies.
