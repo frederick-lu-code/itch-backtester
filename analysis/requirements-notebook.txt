@@ -1,0 +1,7 @@
+# Extra packages for opening or rendering report.ipynb. Not needed by the tests, which run the
+# notebook's cells directly.
+#
+#   pip install -r analysis/requirements.txt -r analysis/requirements-notebook.txt
+#   ITCHBT_RUN=runs/demo jupyter nbconvert --to html --execute analysis/report.ipynb
+nbconvert==7.16.6
+ipykernel==6.29.5
