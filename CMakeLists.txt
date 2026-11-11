@@ -47,17 +47,26 @@ add_library(itchbt_warnings INTERFACE)
 target_compile_options(itchbt_warnings INTERFACE -Wall -Wextra -Wpedantic -Wconversion -Wshadow
                                                  -Werror)
 
+include(cmake/Dependencies.cmake)
+
 # Most of the engine is templates in include/; src/ holds what does not need to inline.
-add_library(itchbt STATIC src/itch/reader.cpp src/util/platform.cpp)
+add_library(itchbt STATIC src/itch/reader.cpp src/record/recorder.cpp src/sim/config.cpp
+                          src/util/platform.cpp src/util/sha256.cpp)
 add_library(itchbt::itchbt ALIAS itchbt)
 target_include_directories(itchbt PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_compile_features(itchbt PUBLIC cxx_std_20)
-target_link_libraries(itchbt PRIVATE itchbt_warnings)
+target_link_libraries(itchbt PRIVATE itchbt_warnings tomlplusplus::tomlplusplus)
 if(ITCHBT_TIMING)
     target_compile_definitions(itchbt PUBLIC ITCHBT_TIMING=1)
 endif()
 
-include(cmake/Dependencies.cmake)
+# Recorded in run.json. Captured at configure time, so re-run cmake after committing if the
+# exact commit matters.
+execute_process(COMMAND git rev-parse HEAD WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+                OUTPUT_VARIABLE ITCHBT_GIT_COMMIT OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+if(NOT ITCHBT_GIT_COMMIT)
+    set(ITCHBT_GIT_COMMIT "unknown")
+endif()
 
 add_subdirectory(apps)
 if(ITCHBT_BUILD_BENCH)

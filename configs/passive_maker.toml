@@ -1,0 +1,35 @@
+# PassiveMaker on ten liquid Nasdaq-listed symbols.
+strategy = "passive_maker"
+symbols = ["AAPL", "MSFT", "AMZN", "GOOGL", "FB", "INTC", "CSCO", "NVDA", "NFLX", "TSLA"]
+
+# Build every symbol's book (true) or only the ten above (false). Results are identical;
+# false is several times faster and uses far less memory.
+build_all_books = true
+
+[latency]
+order_ns = 100000   # 100 microseconds from strategy to exchange
+cancel_ns = 100000
+ack_ns = 50000
+
+[exchange]
+# PassiveMaker re-quotes on every move of the touch: several hundred thousand orders per
+# symbol over a day.
+max_orders_per_symbol = 2000000
+
+[risk]
+max_order_qty = 1000
+max_order_notional_usd = 2000000
+price_collar_bps = 200
+max_position = 500
+max_gross_notional_usd = 5000000
+max_open_orders = 4
+rate_limit_per_second = 200
+rate_limit_burst = 400
+loss_limit_usd = 50000
+reject_window_ns = 1000000000
+reject_threshold = 500
+
+[passive_maker]
+lot = 100
+max_inventory = 300
+skew_per_lot = 100  # one cent per lot held

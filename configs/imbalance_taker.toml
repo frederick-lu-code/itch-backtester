@@ -1,0 +1,27 @@
+# ImbalanceTaker on five liquid symbols.
+strategy = "imbalance_taker"
+symbols = ["AAPL", "MSFT", "INTC", "CSCO", "FB"]
+build_all_books = false
+
+[latency]
+order_ns = 100000
+cancel_ns = 100000
+ack_ns = 50000
+
+[risk]
+max_order_qty = 1000
+max_order_notional_usd = 1000000
+price_collar_bps = 100
+max_position = 500
+max_gross_notional_usd = 2000000
+max_open_orders = 2
+rate_limit_per_second = 50
+rate_limit_burst = 100
+loss_limit_usd = 20000
+reject_threshold = 200
+
+[imbalance_taker]
+lot = 100
+max_inventory = 300
+threshold_pct = 90
+cooldown_ns = 5000000000

@@ -1,0 +1,15 @@
+# A deliberately tiny loss limit, to show the kill switch tripping: the first adverse move
+# after a fill stops the strategy for the rest of the run.
+strategy = "imbalance_taker"
+symbols = ["AAPL"]
+build_all_books = false
+
+[risk]
+loss_limit_usd = 25
+max_position = 1000
+
+[imbalance_taker]
+lot = 100
+max_inventory = 1000
+threshold_pct = 75
+cooldown_ns = 1000000000
