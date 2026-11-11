@@ -56,3 +56,34 @@ All five match to the cent. Four of the five have split since 2019, so comparing
 today's price history without undoing the splits would have shown four apparent mismatches.
 The GOOGL figure differs in the fourth decimal only because the published value is a 32-bit
 float.
+
+## Optimised book
+
+The engine and the book tools use the optimised book (flat order map, sorted-vector levels).
+Everything above was re-run against it:
+
+| Check | Result |
+| --- | --- |
+| Book invariants on the full day (`book-check`, six full recounts) | All hold; same 642 reopening transients, longest 1.214 ms |
+| Python reference book, random streams and the real file | Identical |
+| Property test: baseline against each of three other container combinations after every message, four seeds, plus a stream of deliberate anomalies | Identical change records, levels and anomaly counts |
+| Fingerprint of every book at 16 checkpoints through the real day, five variants | `1972692282` for all five |
+
+## Backtest output
+
+| Check | Result |
+| --- | --- |
+| Two runs of the same backtest, synthetic stream (CI) | Four output files byte-identical; `run.json` identical apart from its `timing` object |
+| Recorder on a writer thread against recorder on the engine thread | Byte-identical |
+| Building every symbol's book against only the traded symbols', real day, PassiveMaker on ten symbols | Byte-identical: 93,015,384 bytes of order events, 1,220,856 of fills, 97,142,304 of top-of-book records |
+| Four shards against one engine, real day, PassiveMaker on ten symbols with per-symbol limits | Every record of every symbol identical; per-symbol positions and PnL identical |
+| PnL recomputed in Python from `fills.bin` and `bbo.bin`, ten symbols, real day | Equal to the engine's position, realised and unrealised figures exactly |
+| Kill switch on the real day (`configs/kill_switch_demo.toml`) | Trips at 09:30:51 with total PnL 25.29 dollars down against a 25 dollar limit; the 14,017 orders after it are all rejected with `kill_switch` |
+
+## What was not validated
+
+- Nothing was compared against another ITCH book builder or against Nasdaq's own book
+  snapshots; the checks are internal invariants, an independent reimplementation, and five
+  public closing prices.
+- The fill model has not been compared with real fills. It cannot be: there are none.
+- Only one day of data was used.

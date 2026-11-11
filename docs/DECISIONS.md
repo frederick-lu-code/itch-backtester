@@ -322,3 +322,68 @@ undersized stores do allocate and that the rehash counter reports it.
 **F5. Latency timing is a separate build.** `-DITCHBT_TIMING=ON` adds a counter read before and
 after every message. Throughput is quoted from the untimed build and the cost of timing is
 reported beside the latencies.
+
+## Sharding
+
+**H1. The router is the ordinary parser with a handler that only routes.** It reuses `parse()`
+and its validation, so a worker never sees a malformed record. Alternative: a second framing
+loop. Rejected for the same reason as P8.
+
+**H2. Queues carry pointers into the mapping.** Nothing is copied; the mapping is read-only
+and outlives the run.
+
+**H3. Symbols are dealt round-robin in config order.** It balances the traded symbols, which
+carry the work. Hashing the locate could put every liquid name in one shard.
+
+**H4. Cross-symbol risk limits are refused, not approximated.** Gross notional, the total-PnL
+loss limit, the rate limit and the reject-rate switch all depend on events across symbols. A
+per-shard version would give answers that depend on the shard count. The run fails with the
+list of offending settings instead.
+
+**H5. Each shard writes its own files.** Merging into one file would need a second pass or a
+lock. The loader concatenates shards and sorts stably by time, which preserves each symbol's
+order because a symbol lives in exactly one shard.
+
+**H6. System events go to every shard.** They carry locate 0 and every engine needs the
+session state. Everything else with a locate goes to exactly one.
+
+## Benchmarks
+
+**M1. Results that cannot be trusted are deleted, not footnoted.** Measurements taken while
+the laptop slept were removed from the repository, with a note listing them and the evidence.
+Three sections of `BENCHMARKS.md` consequently read "not measured".
+
+**M2. Which result directories are published is a committed list.** `bench/results/CURRENT`
+names them. The renderer once picked "the latest" by directory name and chose the wrong one.
+
+**M3. The verdict text in the optimisation log is chosen by the measured ratio.** The
+hypothesis for each change is written by hand; the numbers, and whether the row says kept,
+no gain or slower, come from the results.
+
+**M4. Benchmarks are guarded against sleep on macOS.** Each is repeated if the power log shows
+a sleep during it. On Linux the guard does nothing.
+
+**M5. The micro-benchmarks replay a real reference trace.** Random keys would flatter or
+punish a hash table arbitrarily; the trace has the real mix of sequential references and
+lifetimes.
+
+## Where this departs from the specification
+
+Gathered in one place. Each is explained above or in `BENCHMARKS.md`.
+
+| Specification | What was done | Why |
+| --- | --- | --- |
+| Linux x86-64, bare metal for benchmarks | Developed and benchmarked on macOS, Apple Silicon; Linux only in CI | The only machine available; the owner's decision |
+| `perf stat` counters, flame graphs, `taskset`, governor | Not collected or not applicable; scripts exist for Linux and are marked as never run | Not available on macOS without root |
+| `std::byteswap` | Compiler builtins | `std::byteswap` is C++23; the project is strict C++20 |
+| Book not crossed during regular hours | Tolerated for 100 ms after a halt release while continuously crossed | The feed itself violates the stricter rule 642 times on the reference day |
+| Acknowledgements return after `ack_latency_ns` | Every update from the exchange is delayed by it, not only acknowledgements | So the strategy never learns of a fill before it could have been told |
+| `bbo.bin` for symbols the strategy traded | For every configured symbol | "Traded" is not known in advance |
+| `run.json` holds wall time; output is byte-identical | Byte-identical except `run.json`'s final `timing` object | The two requirements conflict |
+| 10 measured runs | 5 for the two baseline-book variants and for end-to-end runs | Minutes per run |
+| Three tools | A fourth, `book-check` | The invariants on the real file needed a home |
+| `Context` as listed | Plus `tradable`, `symbols`, `symbol_name`, `find_symbol` | A strategy needs to know when it can trade |
+| Propose interfaces and wait for approval before each milestone | Done for M0 and M1; the owner then waived approval for the rest | The owner's instruction |
+| Targets in 8.6 met or the gap explained | None met outright in the published run; explained | Battery, Low Power Mode, and a laptop CPU measured against desktop aims |
+| At least six `DEBUGGING.md` entries from real bugs | Twenty-two real, two labelled exercises | Three of the eight categories never arose naturally |
+| Hot path allocation-free | For traded symbols with adequately sized stores | Untraded symbols' level arrays grow on demand when every book is built |
