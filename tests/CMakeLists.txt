@@ -18,8 +18,10 @@ add_executable(
     unit/order_state_test.cpp
     unit/parser_test.cpp
     unit/reader_test.cpp
+    unit/recorder_test.cpp
     unit/risk_test.cpp
     unit/sha256_test.cpp
+    unit/spsc_ring_test.cpp
     unit/util_test.cpp)
 target_link_libraries(unit_tests PRIVATE itchbt_test_support itchbt_warnings GTest::gmock_main)
 target_compile_definitions(unit_tests PRIVATE ITCHBT_CONFIG_DIR="${PROJECT_SOURCE_DIR}/configs")

@@ -652,12 +652,13 @@ Config maker_config(bool build_all_books) {
 
 /// Runs PassiveMaker over a random stream into a fresh run directory and returns the bytes of
 /// each output file.
-std::vector<std::vector<char>> record_maker_run(const ItchWriter& stream, const Config& config,
-                                                RunStats& stats) {
+std::vector<std::vector<char>>
+record_maker_run(const ItchWriter& stream, const Config& config, RunStats& stats,
+                 record::RecorderMode mode = record::RecorderMode::Async) {
     const std::filesystem::path dir = test::TempFile::unique_path();
     record::Recorder recorder;
     std::string error;
-    EXPECT_TRUE(recorder.open(dir, error)) << error;
+    EXPECT_TRUE(recorder.open(dir, error, mode)) << error;
     strategies::PassiveMaker maker(config.passive_maker);
     Backtester<strategies::PassiveMaker> engine(config, maker, recorder);
     EXPECT_TRUE(engine.prepare(stream.bytes(), error)) << error;
@@ -707,6 +708,22 @@ TEST(Determinism, BuildingOtherSymbolsBooksDoesNotChangeTheOutput) {
     EXPECT_GT(all_stats.fills, 20U);
     for (std::size_t i = 0; i < all.size(); ++i) {
         EXPECT_EQ(all[i], traded_only[i]) << "file " << i;
+    }
+}
+
+TEST(Determinism, RecorderThreadDoesNotChangeTheOutput) {
+    test::RandomStreamOptions options;
+    options.seed = 99;
+    options.events = 40'000;
+    const ItchWriter stream = test::random_stream(options);
+    RunStats stats;
+    const auto async_files =
+        record_maker_run(stream, maker_config(true), stats, record::RecorderMode::Async);
+    const auto sync_files =
+        record_maker_run(stream, maker_config(true), stats, record::RecorderMode::Sync);
+    EXPECT_GT(stats.fills, 20U);
+    for (std::size_t i = 0; i < async_files.size(); ++i) {
+        EXPECT_EQ(async_files[i], sync_files[i]) << "file " << i;
     }
 }
 

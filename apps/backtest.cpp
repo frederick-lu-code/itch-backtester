@@ -2,10 +2,12 @@
 //
 //   backtest --input data/<file> --config configs/passive_maker.toml --out runs/<name>
 //            [--symbols AAPL,MSFT] [--max-messages N] [--skip-input-hash]
+//            [--recorder async|sync]
 //
 // The run directory holds orders.bin, fills.bin, bbo.bin, risk.bin and run.json. The four
-// .bin files are a pure function of the input, the config and the binary. run.json adds the
-// wall time, which is the one value that differs between otherwise identical runs.
+// .bin files are a pure function of the input, the config and the binary. So is run.json,
+// except for its final "timing" object (wall time and how long the engine waited on the
+// recorder), which is the only thing that differs between otherwise identical runs.
 
 #include "imbalance_taker.hpp"
 #include "noop.hpp"
@@ -109,7 +111,7 @@ Outcome run_strategy(S& strategy, const sim::Config& config, record::Recorder& r
 bool write_run_json(const std::filesystem::path& path, const std::string& input,
                     std::uint64_t input_size, const std::string& sha256, const sim::Config& config,
                     const Outcome& outcome, const record::RecordCounts& counts,
-                    double wall_seconds) {
+                    const record::RecorderStats& recorder, double wall_seconds) {
     std::FILE* out = std::fopen(path.c_str(), "w");
     if (out == nullptr) {
         return false;
@@ -140,8 +142,12 @@ bool write_run_json(const std::filesystem::path& path, const std::string& input,
                  ", \"bbo\": %" PRIu64 ", \"risk\": %" PRIu64 "},\n",
                  counts.orders, counts.fills, counts.bbo, counts.risk);
     std::fprintf(out, "  \"risk\": %s,\n", outcome.risk_json.c_str());
-    // Kept last and on its own line: it is the only value that varies between identical runs.
-    std::fprintf(out, "  \"wall_time_s\": %.3f\n}\n", wall_seconds);
+    // Kept last and on its own line: these are the only values that vary between otherwise
+    // identical runs. Everything above this line is a pure function of input, config and binary.
+    std::fprintf(out,
+                 "  \"timing\": {\"wall_time_s\": %.3f, \"recorder_blocked_records\": %" PRIu64
+                 ", \"recorder_blocked_ns\": %" PRIu64 "}\n}\n",
+                 wall_seconds, recorder.blocked_records, recorder.blocked_ns);
     return std::fclose(out) == 0;
 }
 
@@ -161,7 +167,9 @@ int run(int argc, char** argv) {
     const auto symbols = args.value("--symbols");
     const std::uint64_t max_messages = args.number("--max-messages", bad).value_or(UINT64_MAX);
     const bool skip_hash = args.flag("--skip-input-hash");
-    if (!input || !config_path || !out_dir || bad || !args.unused().empty()) {
+    const std::string recorder_mode(args.value("--recorder").value_or("async"));
+    if (!input || !config_path || !out_dir || bad || !args.unused().empty() ||
+        (recorder_mode != "async" && recorder_mode != "sync")) {
         return usage();
     }
 
@@ -182,7 +190,10 @@ int run(int argc, char** argv) {
     }
     record::Recorder recorder;
     const std::filesystem::path directory{std::string(*out_dir)};
-    if (!recorder.open(directory, error)) {
+    if (!recorder.open(directory, error,
+                       recorder_mode == "sync" ? record::RecorderMode::Sync
+                                               : record::RecorderMode::Async,
+                       config->recorder_ring_capacity)) {
         std::fprintf(stderr, "backtest: %s\n", error.c_str());
         return 1;
     }
@@ -207,6 +218,7 @@ int run(int argc, char** argv) {
         return 1;
     }
     const record::RecordCounts counts = recorder.counts();
+    const record::RecorderStats recorder_stats = recorder.stats();
     if (!recorder.close()) {
         std::fprintf(stderr, "backtest: failed writing to %s\n", directory.string().c_str());
         return 1;
@@ -214,7 +226,7 @@ int run(int argc, char** argv) {
 
     const std::string sha256 = skip_hash ? std::string() : sha256_hex(file->bytes());
     if (!write_run_json(directory / "run.json", input_path, file->bytes().size(), sha256, *config,
-                        outcome, counts, wall_seconds)) {
+                        outcome, counts, recorder_stats, wall_seconds)) {
         std::fprintf(stderr, "backtest: cannot write run.json\n");
         return 1;
     }
@@ -232,6 +244,11 @@ int run(int argc, char** argv) {
         std::printf("  WARNING: %" PRIu64 " events dropped, %" PRIu64
                     " submits refused; raise event_queue_capacity or max_orders_per_symbol\n",
                     s.events_dropped, s.submits_refused);
+    }
+    if (recorder_stats.blocked_records != 0) {
+        std::printf("  recorder: engine waited on a full ring for %" PRIu64 " records, %.3f ms\n",
+                    recorder_stats.blocked_records,
+                    static_cast<double>(recorder_stats.blocked_ns) / 1e6);
     }
     std::printf("  peak RSS %.0f MiB, run directory %s\n",
                 static_cast<double>(peak_rss_bytes()) / (1024.0 * 1024.0),
