@@ -15,24 +15,34 @@ was done instead:
 | Specification (Linux x86-64) | What these results use (macOS, Apple Silicon) |
 | --- | --- |
 | Pin to one core with `taskset` | No affinity API exists. The thread requests QoS class user-interactive, which keeps it on performance cores but lets the scheduler move it between them |
-| CPU governor `performance`, turbo and THP recorded | Not applicable. Runs were on mains power; the power source is recorded |
-| `perf stat` hardware counters | Not collected. macOS exposes them only to root through private interfaces |
-| `rdtsc`/`rdtscp` latency timing | The ARM virtual counter, which ticks at 24 MHz on this machine: 41.7 ns resolution (see the latency section) |
-| Warm the page cache, 1 discarded run, 10 measured runs, median/min/max | Same |
-| No other heavy processes | Best effort on a laptop: other applications were open but idle |
+| CPU governor `performance`, turbo and THP recorded | Not applicable. The power source and Low Power Mode are recorded instead |
+| `perf stat` hardware counters (instructions per message, IPC, cache and branch misses) | **Not collected.** macOS exposes them only to root through private interfaces. Page faults, from `getrusage`, are the one counter reported |
+| `rdtsc`/`rdtscp` latency timing | The ARM virtual counter (`cntvct_el0`) after an instruction barrier. On this CPU it counts in nanoseconds; the calibrated tick is in the timing table |
+| `perf record` flame graphs | **Not produced.** `scripts/flamegraph.sh` exists for Linux and has never been run |
+| Warm the page cache, 1 discarded run, 10 measured runs, median/min/max | Same, except where the Runs column says otherwise: the two baseline-book variants and the end-to-end runs take minutes each and use 5 |
+| No other heavy processes | Best effort on a laptop: other applications were open but idle, and the machine was kept awake with `caffeinate` |
 
-Consequences: run-to-run spread is wider than a tuned Linux box would give, absolute numbers
-are for an Apple M-series core and are not comparable with the x86 desktop targets in the
-specification, and the Linux paths of `scripts/sysinfo.sh` and `scripts/run_bench.sh` have never
-been run on real hardware. Treat ratios between variants on this machine as the reliable part.
+Two further caveats about the state of the machine for the current results:
+
+- **They were taken on battery with Low Power Mode on**, which roughly halves single-core
+  throughput on this laptop. Turning it off needs administrator rights that were not available.
+  Earlier runs on mains power (`bench/results/2026-11-11-ca0431b` for parse-only,
+  `2026-11-11-b237d90` for the baseline book) show about twice these absolute figures for the
+  same code. `DEBUGGING.md` has the story of how that was noticed.
+- Everything on this page comes from one run of the suite, in one session, so the *ratios*
+  between variants compare like with like. Treat the ratios as the result and the absolute
+  numbers as a lower bound for this CPU.
+
+The Linux paths of `scripts/sysinfo.sh`, `scripts/run_bench.sh` and `scripts/flamegraph.sh` have
+never been run on real hardware.
 
 ## Machine
 
 <!-- BEGIN GENERATED: machine -->
 | Item | Value |
 | --- | --- |
-| Results directory | `bench/results/2026-11-11-ca0431b` |
-| Commit | `ca0431b21e9a` |
+| Results directory | `bench/results/2026-11-11-493c268` |
+| Commit | `493c26850e49` |
 | CPU | Apple M5 |
 | Cores | 4 performance + 6 efficiency |
 | Memory | 16 GB |
@@ -40,9 +50,28 @@ been run on real hardware. Treat ratios between variants on this machine as the 
 | Compiler | Apple clang version 21.0.0 (clang-2100.1.1.101) |
 | CPU governor | not applicable (macOS) |
 | Transparent huge pages | not applicable (macOS) |
-| Power | Now drawing from 'AC Power' |
-| Date (UTC) | 2026-11-11T04:53:50Z |
+| Power | Now drawing from 'Battery Power', **Low Power Mode on** |
+| Date (UTC) | 2026-11-11T10:15:50Z |
 <!-- END GENERATED: machine -->
+
+## Results against the specification's aims
+
+The aims were written for a recent x86 desktop CPU. They are compared here with what this
+laptop measured, in the state described above.
+
+<!-- BEGIN GENERATED: targets -->
+| Benchmark | Aim | Measured on this machine | Result |
+| --- | --- | --- | --- |
+| Parse only | 50 M msg/s or better | 29.0 M msg/s mapped, 43.8 with read() | **not met** |
+| Book build, all symbols | 10 M msg/s or better | 6.48 M msg/s | **not met** |
+| Book build, p99 per message | under 1 microsecond | 799 ns | met |
+| Optimised versus baseline book | at least 3 times the throughput | 2.98x | **not met** |
+<!-- END GENERATED: targets -->
+
+Hot-path allocations after start-up: **zero**, verified by `tests/integration/alloc_test.cpp`,
+which replaces `operator new` with a counting version and replays a stream with each strategy.
+That guarantee covers traded symbols with adequately sized stores; see decision F4 for what it
+does not cover.
 
 ## Parse only
 
@@ -52,29 +81,224 @@ validation and dispatch remain. `mmap` includes mapping the file and its page fa
 timed region; `read` uses `read()` into a 1 MiB buffer. The page cache is warm in all runs.
 
 <!-- BEGIN GENERATED: parse_only -->
-| Variant | Messages | Million messages/s, median (min to max) | GB/s, median (min to max) | Seconds, median (min to max) | Runs |
-| --- | --- | --- | --- | --- | --- |
-| mmap/decode | 268,744,780 | 52.9 (51.2 to 55.9) | 1.6 (1.6 to 1.7) | 5.08 (4.81 to 5.25) | 10 |
-| mmap/frame | 268,744,780 | 75.6 (65.5 to 79.1) | 2.3 (2.0 to 2.4) | 3.56 (3.40 to 4.11) | 10 |
-| read/decode | 268,744,780 | 90.1 (85.0 to 91.6) | 2.8 (2.6 to 2.8) | 2.98 (2.93 to 3.16) | 10 |
-| read/frame | 268,744,780 | 178.8 (162.1 to 186.8) | 5.5 (5.0 to 5.7) | 1.50 (1.44 to 1.66) | 10 |
+| Variant | Million messages/s, median (min to max) | GB/s, median (min to max) | Seconds, median (min to max) | Runs |
+| --- | --- | --- | --- | --- |
+| mmap/decode | 29.0 (8.6 to 30.7) | 0.89 (0.26 to 0.94) | 9.28 (8.76 to 31.25) | 10 |
+| mmap/frame | 38.3 (34.4 to 40.7) | 1.18 (1.06 to 1.25) | 7.01 (6.60 to 7.81) | 10 |
+| read/decode | 43.8 (41.9 to 45.0) | 1.34 (1.29 to 1.38) | 6.14 (5.97 to 6.41) | 10 |
+| read/frame | 87.6 (83.6 to 90.0) | 2.69 (2.57 to 2.76) | 3.07 (2.99 to 3.22) | 10 |
 <!-- END GENERATED: parse_only -->
+
+### I/O path
+
+`read()` is faster than `mmap` here, and the page-fault counts show why: the mapping faults in
+every 16 KiB page of the file on every run, while `read()` reuses one buffer.
+
+<!-- BEGIN GENERATED: parse_faults -->
+| Variant | Minor page faults per run | Major page faults per run | Peak RSS (MiB) |
+| --- | --- | --- | --- |
+| mmap/decode | 260 | 503,398 | 3,135 |
+| mmap/frame | 36 | 503,626 | 2,765 |
+| read/decode | 41 | 0 | 2 |
+| read/frame | 40 | 0 | 2 |
+<!-- END GENERATED: parse_faults -->
+
+A cold-cache comparison was not run: dropping the page cache on macOS needs `sudo purge`.
 
 ## Book build
 
 The full file through the parser into the order book for all 8,906 symbols, with no strategy.
-Construction of the book is inside the timed region. The fingerprint of the final books is
-checked to be identical on every run.
+Construction of the book, including pre-sizing, is inside the timed region. The fingerprint is
+a hash of every level of every book at the end of the day: it is identical in every row, so
+every variant built exactly the same books.
 
 <!-- BEGIN GENERATED: book_build -->
-| Variant | Messages | Million messages/s, median (min to max) | GB/s, median (min to max) | Seconds, median (min to max) | Runs |
+| Variant | Million messages/s, median (min to max) | Versus baseline/reserve | Seconds, median (min to max) | Runs | Book fingerprint |
 | --- | --- | --- | --- | --- | --- |
-| baseline | 268,744,780 | 4.8 (4.1 to 5.3) | 0.1 (0.1 to 0.2) | 56.48 (51.16 to 65.34) | 10 |
+| baseline | 2.15 (2.13 to 2.20) | 0.99x | 124.8 (121.9 to 126.1) | 5 | `00000000` |
+| baseline/reserve | 2.18 (2.11 to 2.19) | 1.00x | 123.4 (122.8 to 127.4) | 5 | `00000000` |
+| flat_orders/reserve | 3.41 (3.35 to 3.61) | 1.57x | 78.7 (74.3 to 80.3) | 10 | `00000000` |
+| binary_levels/reserve | 4.74 (4.58 to 4.90) | 2.18x | 56.7 (54.9 to 58.7) | 10 | `00000000` |
+| optimised/reserve | 5.76 (5.58 to 5.97) | 2.65x | 46.6 (45.0 to 48.1) | 10 | `00000000` |
+| optimised/reserve/prefetch | 6.48 (6.34 to 6.57) | 2.98x | 41.5 (40.9 to 42.4) | 10 | `00000000` |
 <!-- END GENERATED: book_build -->
+
+Variants, each adding one change to the one above it: `baseline` is `std::unordered_map` for
+orders and `std::map` for levels; `/reserve` sizes the order store for the day's peak up front;
+`flat_orders` swaps in the open-addressing order map; `binary_levels` swaps in sorted-vector
+levels found by binary search; `optimised` finds levels by scanning back from the best;
+`/prefetch` prefetches the next message's order slot.
+
+### Memory
+
+<!-- BEGIN GENERATED: memory -->
+| Variant | Peak RSS (MiB) | Peak live orders | Orders added | Minor page faults per run | Major page faults per run | Order-store rehashes |
+| --- | --- | --- | --- | --- | --- | --- |
+| baseline | 2,725 | 1,924,078 | 140,270,523 | 12,320 | 503,626 | 0 |
+| baseline/reserve | 2,666 | 1,924,078 | 140,270,523 | 10,035 | 503,626 | 0 |
+| flat_orders/reserve | 2,944 | 1,924,078 | 140,270,523 | 11,537 | 503,626 | 0 |
+| binary_levels/reserve | 2,579 | 1,924,078 | 140,270,523 | 11,082 | 503,626 | 0 |
+| optimised/reserve | 3,883 | 1,924,078 | 140,270,523 | 11,043 | 503,626 | 0 |
+| optimised/reserve/prefetch | 3,591 | 1,924,078 | 140,270,523 | 10,972 | 503,626 | 0 |
+<!-- END GENERATED: memory -->
+
+Peak RSS includes the mapped file's resident pages, which is most of it. Minor faults are
+dominated by first touches of the mapping.
+
+## Per-message latency
+
+From the `timing` preset (`-DITCHBT_TIMING=ON`): the tick counter is read when a message's
+record has been validated and again when its handler returns, so each sample covers decode,
+dispatch and the book update. Samples go into a fixed log-linear histogram (about 3% relative
+error). Percentiles are reported as bucket upper bounds, so they never understate.
+
+<!-- BEGIN GENERATED: latency -->
+| Variant | Message | Count per run | p50 (ns) | p90 (ns) | p99 (ns) | p99.9 (ns) | max (ms) |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| baseline | all messages | 268,744,780 | 335 | 1151 | 2431 | 4095 | 99.17 |
+| baseline | A add | 117,145,568 | 251 | 879 | 1695 | 4031 | 99.17 |
+| baseline | C executed with price | 99,917 | 167 | 799 | 2239 | 3455 | 0.68 |
+| baseline | D delete | 114,360,997 | 335 | 1215 | 2367 | 3519 | 14.37 |
+| baseline | E executed | 5,722,824 | 503 | 1343 | 2623 | 4095 | 3.91 |
+| baseline | F add (MPID) | 1,485,888 | 295 | 847 | 1567 | 3967 | 50.14 |
+| baseline | H trading action | 8,966 | 0 | 42 | 42 | 42 | 0.00 |
+| baseline | I NOII | 4,024,315 | 0 | 42 | 42 | 42 | 0.02 |
+| baseline | L participant position | 215,161 | 0 | 42 | 42 | 42 | 0.01 |
+| baseline | P trade | 1,218,602 | 41 | 42 | 42 | 42 | 0.05 |
+| baseline | Q cross | 17,836 | 41 | 42 | 42 | 58 | 0.00 |
+| baseline | R directory | 8,906 | 0 | 42 | 42 | 42 | 0.00 |
+| baseline | U replace | 21,639,067 | 799 | 2175 | 3263 | 6783 | 12.09 |
+| baseline | X cancel | 2,787,676 | 167 | 671 | 1759 | 2879 | 0.75 |
+| baseline | Y Reg SHO | 9,013 | 0 | 42 | 42 | 42 | 0.00 |
+| optimised/reserve | all messages | 268,744,780 | 295 | 463 | 1007 | 2559 | 50.92 |
+| optimised/reserve | A add | 117,145,568 | 295 | 375 | 719 | 2431 | 17.39 |
+| optimised/reserve | C executed with price | 99,917 | 83 | 335 | 719 | 1727 | 0.60 |
+| optimised/reserve | D delete | 114,360,997 | 125 | 423 | 847 | 1855 | 50.92 |
+| optimised/reserve | E executed | 5,722,824 | 167 | 423 | 847 | 1887 | 4.62 |
+| optimised/reserve | F add (MPID) | 1,485,888 | 295 | 423 | 943 | 4223 | 1.46 |
+| optimised/reserve | H trading action | 8,966 | 0 | 42 | 42 | 42 | 0.01 |
+| optimised/reserve | I NOII | 4,024,315 | 0 | 42 | 42 | 42 | 0.06 |
+| optimised/reserve | L participant position | 215,161 | 0 | 42 | 42 | 42 | 0.01 |
+| optimised/reserve | P trade | 1,218,602 | 41 | 42 | 42 | 42 | 0.02 |
+| optimised/reserve | Q cross | 17,836 | 41 | 42 | 42 | 83 | 0.01 |
+| optimised/reserve | R directory | 8,906 | 0 | 42 | 42 | 42 | 0.01 |
+| optimised/reserve | U replace | 21,639,067 | 503 | 895 | 1919 | 4991 | 20.30 |
+| optimised/reserve | X cancel | 2,787,676 | 83 | 295 | 639 | 1727 | 3.99 |
+| optimised/reserve | Y Reg SHO | 9,013 | 0 | 42 | 42 | 42 | 0.01 |
+| optimised/reserve/prefetch | all messages | 268,744,780 | 125 | 375 | 799 | 2047 | 710920.50 |
+| optimised/reserve/prefetch | A add | 117,145,568 | 125 | 295 | 543 | 1855 | 552262.86 |
+| optimised/reserve/prefetch | C executed with price | 99,917 | 83 | 251 | 463 | 1727 | 2.09 |
+| optimised/reserve/prefetch | D delete | 114,360,997 | 125 | 335 | 591 | 1503 | 35329.83 |
+| optimised/reserve/prefetch | E executed | 5,722,824 | 85 | 335 | 591 | 1695 | 8.21 |
+| optimised/reserve/prefetch | F add (MPID) | 1,485,888 | 125 | 335 | 719 | 2303 | 1.90 |
+| optimised/reserve/prefetch | H trading action | 8,966 | 0 | 42 | 42 | 2111 | 3.14 |
+| optimised/reserve/prefetch | I NOII | 4,024,315 | 41 | 42 | 42 | 1919 | 6.22 |
+| optimised/reserve/prefetch | L participant position | 215,161 | 0 | 42 | 42 | 1791 | 1.23 |
+| optimised/reserve/prefetch | P trade | 1,218,602 | 41 | 42 | 42 | 2047 | 144.06 |
+| optimised/reserve/prefetch | Q cross | 17,836 | 41 | 42 | 42 | 2047 | 4.38 |
+| optimised/reserve/prefetch | R directory | 8,906 | 0 | 42 | 42 | 5375 | 3.97 |
+| optimised/reserve/prefetch | U replace | 21,639,067 | 423 | 751 | 1727 | 3071 | 710920.50 |
+| optimised/reserve/prefetch | X cancel | 2,787,676 | 83 | 167 | 375 | 1567 | 5.56 |
+| optimised/reserve/prefetch | Y Reg SHO | 9,013 | 0 | 42 | 42 | 1695 | 0.18 |
+<!-- END GENERATED: latency -->
+
+About the maxima: they are milliseconds, four or five orders of magnitude above the 99.9th
+percentile, and they are not the book. A single-threaded process on a laptop is descheduled
+now and then, and the first touch of each page of the mapping is a page fault; either shows up
+as one very long message. Without `perf` it is not possible here to say which sample was which.
+
+Timing has a cost of its own, which is why throughput is always quoted from the untimed build:
+
+<!-- BEGIN GENERATED: timing_overhead -->
+| Variant | Untimed (M msg/s) | Timed (M msg/s) | Timing overhead per message (ns) | Counter tick (ns) |
+| --- | --- | --- | --- | --- |
+| baseline | 2.15 | 1.80 | 90 | 1.000 |
+| optimised/reserve | 5.76 | 3.16 | 143 | 1.000 |
+| optimised/reserve/prefetch | 6.48 | 0.42 | 2255 | 1.000 |
+<!-- END GENERATED: timing_overhead -->
+
+## End-to-end backtest
+
+`backtest` with `configs/passive_maker.toml`: PassiveMaker on ten liquid symbols, books built
+for all 8,906 symbols, 100 microseconds of order latency, the full risk configuration, on the
+whole reference day. The three rows differ only in recording.
+
+<!-- BEGIN GENERATED: end_to_end -->
+| Variant | Wall seconds, median (min to max) | Million messages/s, median (min to max) | Records written | Slowdown versus no recording | Records that waited on a full ring (median) | Time waited, ms (median) | Runs |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| passive_maker/async | 123.05 (42.29 to 230.35) | 2.18 (1.17 to 6.35) | 4,392,178 | -22.7% | 0 | 0.00 | 5 |
+| passive_maker/none | 159.21 (40.70 to 362.72) | 1.69 (0.74 to 6.60) | 367 | +0.0% | 0 | 0.00 | 5 |
+| passive_maker/sync | 325.32 (45.52 to 1023.37) | 0.83 (0.26 to 5.90) | 4,392,178 | +104.3% | 0 | 0.00 | 5 |
+<!-- END GENERATED: end_to_end -->
+
+With `build_all_books = false` the same run produces byte-identical output several times
+faster, because nine tenths of the messages are for symbols nobody is trading.
+
+## Data structures and dispatch
+
+Google Benchmark, `bench/micro_bench.cpp`. The order-map rows replay a trace of real order
+references (inserts, lookups and erases from mid-morning of the reference day) rather than
+random keys, because a hash table's behaviour depends on the key distribution and on how long
+keys live.
+
+<!-- BEGIN GENERATED: micro -->
+| Benchmark | ns per item | Million items/s | Notes |
+| --- | --- | --- | --- |
+| `BM_OrderMapReplay<StdOrderMap>/0` | 42.3 | 23.6 | real trace, not pre-sized |
+| `BM_OrderMapReplay<StdOrderMap>/2097152` | 31.7 | 31.6 | real trace, pre-sized |
+| `BM_OrderMapReplay<FlatOrderMap>/0` | 23.9 | 41.8 | real trace, not pre-sized |
+| `BM_OrderMapReplay<FlatOrderMap>/2097152` | 12.5 | 80.1 | real trace, pre-sized |
+| `BM_LevelUpdate<MapLevels>/16` | 8.0 | 124.9 |  |
+| `BM_LevelUpdate<MapLevels>/256` | 14.4 | 69.4 |  |
+| `BM_LevelUpdate<MapLevels>/4096` | 20.7 | 48.2 |  |
+| `BM_LevelUpdate<BinaryVectorLevels>/16` | 6.1 | 163.3 |  |
+| `BM_LevelUpdate<BinaryVectorLevels>/256` | 11.1 | 90.3 |  |
+| `BM_LevelUpdate<BinaryVectorLevels>/4096` | 22.1 | 45.2 |  |
+| `BM_LevelUpdate<VectorLevels>/16` | 2.9 | 342.8 |  |
+| `BM_LevelUpdate<VectorLevels>/256` | 2.9 | 340.4 |  |
+| `BM_LevelUpdate<VectorLevels>/4096` | 2.9 | 342.3 |  |
+| `BM_LevelCreateDestroyAtTop<MapLevels>/256` | 21.0 | 47.7 |  |
+| `BM_LevelCreateDestroyAtTop<MapLevels>/4096` | 38.3 | 26.1 |  |
+| `BM_LevelCreateDestroyAtTop<VectorLevels>/256` | 5.3 | 188.7 |  |
+| `BM_LevelCreateDestroyAtTop<VectorLevels>/4096` | 5.3 | 188.2 |  |
+| `BM_SpscTransfer/1024` | 32.1 | 31.2 |  |
+| `BM_SpscTransfer/65536` | 120.3 | 8.3 |  |
+| `BM_EngineDispatchConcept` | 44.1 | 22.7 | 400,010 messages, 134,138 callbacks per run |
+| `BM_EngineDispatchVirtual` | 48.1 | 20.8 | 400,010 messages, 134,138 callbacks per run |
+<!-- END GENERATED: micro -->
+
+Dispatch: the two `BM_EngineDispatch` rows replay the same synthetic stream through the whole
+engine, once with the strategy bound through the concept and once through the virtual adapter.
+
+<!-- BEGIN GENERATED: dispatch -->
+Per replay of the same stream the virtual adapter took +1.62 ms relative to the concept-bound strategy, which is +12.1 ns per callback over 134,138 callbacks.
+<!-- END GENERATED: dispatch -->
 
 ## Optimisation log
 
-Empty. One row per change from M6, including changes that did not help.
+One row per change, starting from the baseline book, in the order they were made. Numbers are
+medians from the tables above, generated with them; the verdict text is chosen by the measured
+ratio, so a change that did not help says so.
 
+<!-- BEGIN GENERATED: optimisation_log -->
 | Change | Hypothesis | Before and after | Verdict |
 | --- | --- | --- | --- |
+| Size the baseline order map up front (`reserve`) | `std::unordered_map` rehashes about twenty times on its way to 1.9 million live orders, each time re-linking every node. Reserving the bucket array once should remove that. | 2.15 to 2.18 M msg/s (1.01x). | No gain: rehashing is not where the baseline spends its time. Later rows still compare against the pre-sized variant so that pre-sizing is not credited to the flat map. |
+| Replace `std::unordered_map` with an open-addressing flat hash map for orders | Every order lookup in the baseline is a pointer chase to a separately allocated node, and every add and delete is a malloc or free. One flat array of 32-byte slots with linear probing removes the allocation and at least one cache miss per message. | 2.18 to 3.41 M msg/s (1.57x). | Kept. |
+| Replace `std::map` price levels with a sorted vector, binary search | A red-black tree spreads a side's levels across the heap. A contiguous sorted array keeps the levels near the touch together, and inserting or erasing near the best moves only a few 16-byte entries. | 3.41 to 4.74 M msg/s (1.39x). | Kept. |
+| Find levels by scanning back from the best instead of binary search | Most book activity is within a few levels of the touch. A linear scan from the best level usually ends in one or two predictable steps, where a binary search over thousands of levels takes a dozen unpredictable ones. | 4.74 to 5.76 M msg/s (1.22x). p99 after: 1007 ns. | Kept. |
+| Prefetch the order-store slot for the next message's reference | With allocation and tree walks gone, what remains is the cache miss on the order slot itself: the table is 128 MB and references arrive in no useful order. The parser can see the next message's reference one message early, long enough for the slot to arrive. | 5.76 to 6.48 M msg/s (1.12x). p99 1007 to 799 ns. | Kept, and adopted by the engine through the parser's `lookahead` hook. |
+| Read the file with `read()` instead of mapping it (experiment, parse only) | The parse-only benchmark showed `mmap` slower than `read()`. The mapping takes a page fault for every 16 KiB of an 8 GiB file on every run, where `read()` copies into one buffer that stays in cache. | 28.96 to 43.80 M msg/s (1.51x). | Not adopted, although it is faster in isolation: once the book is being built the parse is a small share of the run, and `mmap` is what lets the engine, the directory pre-scan and the input hash share one zero-copy view of the file. The `read()` path stays as the benchmark baseline. |
+| Dispatch strategy callbacks through a virtual adapter (experiment) | Binding the strategy at compile time lets its callbacks inline into the event loop. A virtual call per callback should cost a few nanoseconds each. | 17.63 to 19.25 ms per replay (0.92x). Per replay of the same stream the virtual adapter took +1.62 ms relative to the concept-bound strategy, which is +12.1 ns per callback over 134,138 callbacks. | Not adopted as the default: the adapter is the slower path, as expected. It stays available for strategies chosen at run time. |
+<!-- END GENERATED: optimisation_log -->
+
+What is missing from this log is the evidence that would normally prompt each step: a flame
+graph frame or a cache-miss count. Neither can be collected on this machine without root, so
+each hypothesis rests on reasoning about the data structure and is then tested by the
+before-and-after measurement alone.
+
+## Sharding
+
+<!-- BEGIN GENERATED: sharding -->
+Not yet measured.
+<!-- END GENERATED: sharding -->

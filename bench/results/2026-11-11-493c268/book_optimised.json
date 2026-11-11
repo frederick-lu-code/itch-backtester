@@ -1,0 +1,18 @@
+{
+  "benchmark": "book_build",
+  "variant": "optimised/reserve",
+  "messages": 268744780,
+  "bytes": 8251407909,
+  "input": "data/12302019.NASDAQ_ITCH50",
+  "thread_placement": "not pinned (macOS has no affinity API); QoS user-interactive, performance cores",
+  "book_fingerprint_low32": 0,
+  "orders_added": 140270523,
+  "peak_live_orders": 1924078,
+  "anomalies": 0,
+  "reserve": 2097152,
+  "peak_rss_bytes": 4071604224,
+  "order_store_rehashes": 0,
+  "minor_page_faults_per_run": 11043,
+  "major_page_faults_per_run": 503626,
+  "run_seconds": [46.637684, 47.257092, 44.984808, 45.226214, 46.312186, 48.121742, 47.537388, 47.110730, 46.646716, 45.254487]
+}

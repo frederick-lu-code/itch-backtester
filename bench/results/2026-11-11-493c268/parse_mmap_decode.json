@@ -1,0 +1,14 @@
+{
+  "benchmark": "parse_only",
+  "variant": "mmap/decode",
+  "messages": 268744780,
+  "bytes": 8251407909,
+  "input": "data/12302019.NASDAQ_ITCH50",
+  "thread_placement": "not pinned (macOS has no affinity API); QoS user-interactive, performance cores",
+  "checksum_low32": 3297342150,
+  "peak_rss_bytes": 3287482368,
+  "minor_page_faults_total": 2868,
+  "major_page_faults_total": 5537378,
+  "runs_including_warmup": 11,
+  "run_seconds": [9.137905, 9.594854, 9.518646, 8.804398, 31.253199, 9.374054, 8.759580, 9.126390, 9.190141, 20.323391]
+}

@@ -1,0 +1,20 @@
+{
+  "benchmark": "book_latency",
+  "variant": "optimised/reserve",
+  "messages": 268744780,
+  "bytes": 8251407909,
+  "input": "data/12302019.NASDAQ_ITCH50",
+  "thread_placement": "not pinned (macOS has no affinity API); QoS user-interactive, performance cores",
+  "book_fingerprint_low32": 0,
+  "orders_added": 140270523,
+  "peak_live_orders": 1924078,
+  "anomalies": 0,
+  "reserve": 2097152,
+  "peak_rss_bytes": 4179509248,
+  "order_store_rehashes": 0,
+  "minor_page_faults_per_run": 11302,
+  "major_page_faults_per_run": 503626,
+  "tick_ns": 1.000,
+  "latency": [{"type": "all", "count": 806234340, "p50_ns": 295.0, "p90_ns": 463.0, "p99_ns": 1007.0, "p999_ns": 2559.0, "max_ns": 50924254.0, "mean_ns": 293.4}, {"type": "A", "count": 351436704, "p50_ns": 295.0, "p90_ns": 375.0, "p99_ns": 719.0, "p999_ns": 2431.0, "max_ns": 17388976.7, "mean_ns": 318.9}, {"type": "C", "count": 299751, "p50_ns": 83.0, "p90_ns": 335.0, "p99_ns": 719.0, "p999_ns": 1727.0, "max_ns": 597101.0, "mean_ns": 152.6}, {"type": "D", "count": 343082991, "p50_ns": 125.0, "p90_ns": 423.0, "p99_ns": 847.0, "p999_ns": 1855.0, "max_ns": 50924254.0, "mean_ns": 230.8}, {"type": "E", "count": 17168472, "p50_ns": 167.0, "p90_ns": 423.0, "p99_ns": 847.0, "p999_ns": 1887.0, "max_ns": 4615154.9, "mean_ns": 238.2}, {"type": "F", "count": 4457664, "p50_ns": 295.0, "p90_ns": 423.0, "p99_ns": 943.0, "p999_ns": 4223.0, "max_ns": 1455552.0, "mean_ns": 324.1}, {"type": "H", "count": 26898, "p50_ns": 0.0, "p90_ns": 42.0, "p99_ns": 42.0, "p999_ns": 42.0, "max_ns": 10208.0, "mean_ns": 18.5}, {"type": "I", "count": 12072945, "p50_ns": 0.0, "p90_ns": 42.0, "p99_ns": 42.0, "p999_ns": 42.0, "max_ns": 59243.0, "mean_ns": 19.3}, {"type": "J", "count": 102, "p50_ns": 41.0, "p90_ns": 42.0, "p99_ns": 42.0, "p999_ns": 42.0, "max_ns": 42.0, "mean_ns": 24.9}, {"type": "K", "count": 9, "p50_ns": 0.0, "p90_ns": 42.0, "p99_ns": 42.0, "p999_ns": 42.0, "max_ns": 42.0, "mean_ns": 14.0}, {"type": "L", "count": 645483, "p50_ns": 0.0, "p90_ns": 42.0, "p99_ns": 42.0, "p999_ns": 42.0, "max_ns": 11726.0, "mean_ns": 17.9}, {"type": "P", "count": 3655806, "p50_ns": 41.0, "p90_ns": 42.0, "p99_ns": 42.0, "p999_ns": 42.0, "max_ns": 24017.0, "mean_ns": 24.2}, {"type": "Q", "count": 53508, "p50_ns": 41.0, "p90_ns": 42.0, "p99_ns": 42.0, "p999_ns": 83.0, "max_ns": 8958.0, "mean_ns": 24.4}, {"type": "R", "count": 26718, "p50_ns": 0.0, "p90_ns": 42.0, "p99_ns": 42.0, "p999_ns": 42.0, "max_ns": 8683.0, "mean_ns": 18.3}, {"type": "S", "count": 18, "p50_ns": 42.0, "p90_ns": 251.0, "p99_ns": 295.0, "p999_ns": 295.0, "max_ns": 417.0, "mean_ns": 99.5}, {"type": "U", "count": 64917201, "p50_ns": 503.0, "p90_ns": 895.0, "p99_ns": 1919.0, "p999_ns": 4991.0, "max_ns": 20303397.6, "mean_ns": 588.1}, {"type": "V", "count": 3, "p50_ns": 0.0, "p90_ns": 41.0, "p99_ns": 41.0, "p999_ns": 41.0, "max_ns": 42.0, "mean_ns": 27.7}, {"type": "X", "count": 8363028, "p50_ns": 83.0, "p90_ns": 295.0, "p99_ns": 639.0, "p999_ns": 1727.0, "max_ns": 3985260.9, "mean_ns": 142.4}, {"type": "Y", "count": 27039, "p50_ns": 0.0, "p90_ns": 42.0, "p99_ns": 42.0, "p999_ns": 42.0, "max_ns": 8125.0, "mean_ns": 18.2}],
+  "run_seconds": [88.484087, 84.804095, 84.991778]
+}
