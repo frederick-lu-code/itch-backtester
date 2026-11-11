@@ -14,6 +14,7 @@ add_executable(
     unit/endian_test.cpp
     unit/event_queue_test.cpp
     unit/exchange_test.cpp
+    unit/histogram_test.cpp
     unit/itch_writer_test.cpp
     unit/order_state_test.cpp
     unit/parser_test.cpp
@@ -36,6 +37,17 @@ target_link_libraries(integration_tests PRIVATE itchbt_test_support itchbt_warni
                                                 GTest::gmock_main)
 target_include_directories(integration_tests PRIVATE ${PROJECT_SOURCE_DIR}/strategies)
 gtest_discover_tests(integration_tests)
+
+# Replaces global operator new, so it must be its own executable. Sanitizers interpose the
+# allocator themselves and the baseline book allocates per order by design, so the test only
+# makes sense on a plain build of the optimised book.
+if(NOT ITCHBT_SANITIZE AND NOT ITCHBT_BASELINE_BOOK)
+    add_executable(alloc_tests integration/alloc_test.cpp)
+    target_link_libraries(alloc_tests PRIVATE itchbt_test_support itchbt_warnings
+                                              GTest::gmock_main)
+    target_include_directories(alloc_tests PRIVATE ${PROJECT_SOURCE_DIR}/strategies)
+    gtest_discover_tests(alloc_tests)
+endif()
 
 if(ITCHBT_FUZZ)
     add_subdirectory(fuzz)
