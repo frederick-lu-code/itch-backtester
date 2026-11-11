@@ -67,6 +67,9 @@ Construction of the book is inside the timed region. The fingerprint of the fina
 checked to be identical on every run.
 
 <!-- BEGIN GENERATED: book_build -->
+| Variant | Messages | Million messages/s, median (min to max) | GB/s, median (min to max) | Seconds, median (min to max) | Runs |
+| --- | --- | --- | --- | --- | --- |
+| baseline | 268,744,780 | 4.8 (4.1 to 5.3) | 0.1 (0.1 to 0.2) | 56.48 (51.16 to 65.34) | 10 |
 <!-- END GENERATED: book_build -->
 
 ## Optimisation log

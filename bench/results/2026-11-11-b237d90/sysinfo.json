@@ -1,0 +1,21 @@
+{
+  "os": "Darwin",
+  "kernel": "25.6.0",
+  "arch": "arm64",
+  "git_commit": "b237d900d79cdfe279600ee30d5491e780cfda11",
+  "git_dirty": "no",
+  "compiler": "Apple clang version 21.0.0 (clang-2100.1.1.101)",
+  "cmake": "cmake version 4.4.4",
+  "os_version": "26.6",
+  "cpu_model": "Apple M5",
+  "logical_cpus": "10",
+  "performance_cores": "4",
+  "efficiency_cores": "6",
+  "memory_kb": "16777216",
+  "timebase_hz": "24000000",
+  "page_size": "16384",
+  "power": "Now drawing from 'AC Power'",
+  "governor": "not applicable (macOS)",
+  "transparent_hugepage": "not applicable (macOS)",
+  "date_utc": "2026-11-11T05:17:16Z"
+}
