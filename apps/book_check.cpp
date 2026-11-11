@@ -21,7 +21,7 @@
 // --crosses-out writes every cross trade (opening, closing, halt) for reconciliation against
 // published prices.
 
-#include "itchbt/book/book.hpp"
+#include "itchbt/book/default.hpp"
 #include "itchbt/itch/directory.hpp"
 #include "itchbt/itch/parser.hpp"
 #include "itchbt/itch/reader.hpp"
@@ -169,7 +169,7 @@ private:
         tick();
     }
 
-    book::BaselineBooks books_;
+    book::DefaultBooks books_;
     itch::SymbolDirectory directory_;
     itch::MarketState market_;
     std::uint64_t recount_every_;

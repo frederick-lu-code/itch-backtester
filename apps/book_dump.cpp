@@ -6,7 +6,7 @@
 //   book-dump --input data/<file> --symbols AAPL,MSFT --max-messages 5000000 --depth 0
 //             --format csv --checkpoint-every 1000000
 
-#include "itchbt/book/book.hpp"
+#include "itchbt/book/default.hpp"
 #include "itchbt/itch/directory.hpp"
 #include "itchbt/itch/parser.hpp"
 #include "itchbt/itch/reader.hpp"
@@ -159,7 +159,7 @@ private:
     }
 
     const Options& options_;
-    book::BaselineBooks books_;
+    book::DefaultBooks books_;
     itch::SymbolDirectory directory_;
     std::vector<bool> wanted_;
     std::vector<Locate> locates_;
