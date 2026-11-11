@@ -2,7 +2,7 @@
 //
 //   backtest --input data/<file> --config configs/passive_maker.toml --out runs/<name>
 //            [--symbols AAPL,MSFT] [--max-messages N] [--skip-input-hash]
-//            [--recorder async|sync]
+//            [--recorder async|sync|none]
 //
 // The run directory holds orders.bin, fills.bin, bbo.bin, risk.bin and run.json. The four
 // .bin files are a pure function of the input, the config and the binary. So is run.json,
@@ -174,7 +174,7 @@ int run(int argc, char** argv) {
     const bool skip_hash = args.flag("--skip-input-hash");
     const std::string recorder_mode(args.value("--recorder").value_or("async"));
     if (!input || !config_path || !out_dir || bad || !args.unused().empty() ||
-        (recorder_mode != "async" && recorder_mode != "sync")) {
+        (recorder_mode != "async" && recorder_mode != "sync" && recorder_mode != "none")) {
         return usage();
     }
 
@@ -195,7 +195,10 @@ int run(int argc, char** argv) {
     }
     record::Recorder recorder;
     const std::filesystem::path directory{std::string(*out_dir)};
-    if (!recorder.open(directory, error,
+    std::error_code ec;
+    std::filesystem::create_directories(directory, ec);
+    if (recorder_mode != "none" &&
+        !recorder.open(directory, error,
                        recorder_mode == "sync" ? record::RecorderMode::Sync
                                                : record::RecorderMode::Async,
                        config->recorder_ring_capacity)) {
@@ -224,7 +227,7 @@ int run(int argc, char** argv) {
     }
     const record::RecordCounts counts = recorder.counts();
     const record::RecorderStats recorder_stats = recorder.stats();
-    if (!recorder.close()) {
+    if (recorder_mode != "none" && !recorder.close()) {
         std::fprintf(stderr, "backtest: failed writing to %s\n", directory.string().c_str());
         return 1;
     }
