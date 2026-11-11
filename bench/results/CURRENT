@@ -2,4 +2,4 @@
 # Where two directories hold the same benchmark and variant, the later one wins.
 # Both were measured on the same machine in the same state: battery, Low Power Mode on.
 2026-11-11-493c268
-2026-11-12-3a6dcf0
+2026-11-12-cd9db4e

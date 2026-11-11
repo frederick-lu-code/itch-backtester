@@ -12,3 +12,10 @@ BENCHMARKS.md, with the command to run them.
 
 The micro-benchmark run took about three minutes and the guard saw no sleep during it. Its
 figures are computed from CPU time, except the two-thread ring transfer, which uses wall time.
+
+The `BM_SpscTransfer/1024` row is three orders of magnitude slower than the same benchmark
+measured interactively earlier in the project, and it was the same in a second run with no
+sleep recorded. It is not sleep. With a ring this small the producer fills it almost at once
+and then spins until the consumer thread is scheduled, and in the state the machine was in
+(Low Power Mode, unattended, display off) the consumer was evidently not getting a core
+promptly. The row is published as measured; it describes the scheduler more than the ring.

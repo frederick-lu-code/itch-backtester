@@ -41,8 +41,8 @@ never been run on real hardware.
 <!-- BEGIN GENERATED: machine -->
 | Item | Value |
 | --- | --- |
-| Results | `bench/results/2026-11-11-493c268`, `bench/results/2026-11-12-3a6dcf0` |
-| Commit | `3a6dcf0a5d14` (dirty tree) |
+| Results | `bench/results/2026-11-11-493c268`, `bench/results/2026-11-12-cd9db4e` |
+| Commit | `cd9db4e0798a` |
 | CPU | Apple M5 |
 | Cores | 4 performance + 6 efficiency |
 | Memory | 16 GB |
@@ -51,7 +51,7 @@ never been run on real hardware.
 | CPU governor | not applicable (macOS) |
 | Transparent huge pages | not applicable (macOS) |
 | Power | Now drawing from 'Battery Power', **Low Power Mode on** |
-| Date (UTC) | 2026-11-11T17:31:56Z |
+| Date (UTC) | 2026-11-11T17:44:30Z |
 <!-- END GENERATED: machine -->
 
 ## Results against the specification's aims
@@ -224,34 +224,48 @@ keys live.
 <!-- BEGIN GENERATED: micro -->
 | Benchmark | ns per item | Million items/s | Notes |
 | --- | --- | --- | --- |
-| `BM_OrderMapReplay<StdOrderMap>/0` | 46.5 | 21.5 | real trace, not pre-sized |
-| `BM_OrderMapReplay<StdOrderMap>/2097152` | 33.0 | 30.3 | real trace, pre-sized |
-| `BM_OrderMapReplay<FlatOrderMap>/0` | 24.6 | 40.7 | real trace, not pre-sized |
-| `BM_OrderMapReplay<FlatOrderMap>/2097152` | 12.4 | 80.6 | real trace, pre-sized |
-| `BM_LevelUpdate<MapLevels>/16` | 7.4 | 134.6 |  |
-| `BM_LevelUpdate<MapLevels>/256` | 14.2 | 70.4 |  |
-| `BM_LevelUpdate<MapLevels>/4096` | 20.1 | 49.8 |  |
-| `BM_LevelUpdate<BinaryVectorLevels>/16` | 6.9 | 145.6 |  |
-| `BM_LevelUpdate<BinaryVectorLevels>/256` | 11.5 | 87.1 |  |
-| `BM_LevelUpdate<BinaryVectorLevels>/4096` | 22.5 | 44.5 |  |
-| `BM_LevelUpdate<VectorLevels>/16` | 2.9 | 343.4 |  |
-| `BM_LevelUpdate<VectorLevels>/256` | 2.9 | 343.5 |  |
-| `BM_LevelUpdate<VectorLevels>/4096` | 2.9 | 343.9 |  |
-| `BM_LevelCreateDestroyAtTop<MapLevels>/256` | 29.0 | 34.5 |  |
-| `BM_LevelCreateDestroyAtTop<MapLevels>/4096` | 37.5 | 26.7 |  |
-| `BM_LevelCreateDestroyAtTop<VectorLevels>/256` | 5.3 | 189.5 |  |
-| `BM_LevelCreateDestroyAtTop<VectorLevels>/4096` | 5.3 | 188.9 |  |
-| `BM_SpscTransfer/1024` | 140421.0 | 0.0 |  |
-| `BM_SpscTransfer/65536` | 112.4 | 8.9 |  |
-| `BM_EngineDispatchConcept` | 43.6 | 22.9 | 400,010 messages, 134,138 callbacks per run |
-| `BM_EngineDispatchVirtual` | 48.0 | 20.8 | 400,010 messages, 134,138 callbacks per run |
+| `BM_OrderMapReplay<StdOrderMap>/0` | 36.9 | 27.1 | real trace, not pre-sized |
+| `BM_OrderMapReplay<StdOrderMap>/2097152` | 32.6 | 30.7 | real trace, pre-sized |
+| `BM_OrderMapReplay<FlatOrderMap>/0` | 24.3 | 41.1 | real trace, not pre-sized |
+| `BM_OrderMapReplay<FlatOrderMap>/2097152` | 11.8 | 84.4 | real trace, pre-sized |
+| `BM_LevelUpdate<MapLevels>/16` | 7.5 | 133.3 |  |
+| `BM_LevelUpdate<MapLevels>/256` | 15.0 | 66.5 |  |
+| `BM_LevelUpdate<MapLevels>/4096` | 20.8 | 48.0 |  |
+| `BM_LevelUpdate<BinaryVectorLevels>/16` | 7.1 | 141.8 |  |
+| `BM_LevelUpdate<BinaryVectorLevels>/256` | 10.8 | 92.9 |  |
+| `BM_LevelUpdate<BinaryVectorLevels>/4096` | 22.1 | 45.2 |  |
+| `BM_LevelUpdate<VectorLevels>/16` | 2.9 | 346.0 |  |
+| `BM_LevelUpdate<VectorLevels>/256` | 2.9 | 346.0 |  |
+| `BM_LevelUpdate<VectorLevels>/4096` | 2.9 | 346.2 |  |
+| `BM_LevelCreateDestroyAtTop<MapLevels>/256` | 30.7 | 32.6 |  |
+| `BM_LevelCreateDestroyAtTop<MapLevels>/4096` | 39.2 | 25.5 |  |
+| `BM_LevelCreateDestroyAtTop<VectorLevels>/256` | 5.3 | 189.0 |  |
+| `BM_LevelCreateDestroyAtTop<VectorLevels>/4096` | 5.3 | 188.7 |  |
+| `BM_SpscTransfer/1024` | 22532.1 | 0.0 |  |
+| `BM_SpscTransfer/65536` | 115.3 | 8.7 |  |
+| `BM_EngineDispatchConcept` | 44.0 | 22.7 | 400,010 messages, 134,138 callbacks per run |
+| `BM_EngineDispatchVirtual` | 47.9 | 20.9 | 400,010 messages, 134,138 callbacks per run |
 <!-- END GENERATED: micro -->
+
+Reading the table:
+
+- The flat map replays the real trace in well under half the time of `std::unordered_map`,
+  and pre-sizing matters more to it than to the standard map, because growing a flat table
+  means re-inserting everything.
+- Level updates near the top of a sorted vector cost the same whether the side has 16 levels
+  or 4,096; the tree and the binary search both slow down as the side deepens.
+- `BM_SpscTransfer` with the small ring is an outlier by three orders of magnitude, and was
+  in two separate runs. It is published as measured, but it describes the scheduler, not the
+  ring: with only 1,024 slots the producer fills the ring and spins until the consumer thread
+  gets a core, which this machine, unattended in Low Power Mode, was slow to grant. The same
+  benchmark run interactively earlier in the project took tens of nanoseconds per item. It is
+  also the reason the recorder's ring defaults to 65,536 slots.
 
 Dispatch: the two `BM_EngineDispatch` rows replay the same synthetic stream through the whole
 engine, once with the strategy bound through the concept and once through the virtual adapter.
 
 <!-- BEGIN GENERATED: dispatch -->
-Per replay of the same stream the virtual adapter took +1.77 ms relative to the concept-bound strategy, which is +13.2 ns per callback over 134,138 callbacks.
+Per replay of the same stream the virtual adapter took +1.56 ms relative to the concept-bound strategy, which is +11.7 ns per callback over 134,138 callbacks.
 <!-- END GENERATED: dispatch -->
 
 ## Optimisation log
@@ -269,7 +283,7 @@ ratio, so a change that did not help says so.
 | Find levels by scanning back from the best instead of binary search | Most book activity is within a few levels of the touch. A linear scan from the best level usually ends in one or two predictable steps, where a binary search over thousands of levels takes a dozen unpredictable ones. | 4.74 to 5.76 M msg/s (1.22x). p99 after: 1007 ns. | Kept. |
 | Prefetch the order-store slot for the next message's reference | With allocation and tree walks gone, what remains is the cache miss on the order slot itself: the table is 128 MB and references arrive in no useful order. The parser can see the next message's reference one message early, long enough for the slot to arrive. | 5.76 to 6.48 M msg/s (1.12x). | Kept, and adopted by the engine through the parser's `lookahead` hook. |
 | Read the file with `read()` instead of mapping it (experiment, parse only) | The parse-only benchmark showed `mmap` slower than `read()`. The mapping takes a page fault for every 16 KiB of an 8 GiB file on every run, where `read()` copies into one buffer that stays in cache. | 28.96 to 43.80 M msg/s (1.51x). | Not adopted, although it is faster in isolation: once the book is being built the parse is a small share of the run, and `mmap` is what lets the engine, the directory pre-scan and the input hash share one zero-copy view of the file. The `read()` path stays as the benchmark baseline. |
-| Dispatch strategy callbacks through a virtual adapter (experiment) | Binding the strategy at compile time lets its callbacks inline into the event loop. A virtual call per callback should cost a few nanoseconds each. | 17.44 to 19.21 ms per replay (0.91x). Per replay of the same stream the virtual adapter took +1.77 ms relative to the concept-bound strategy, which is +13.2 ns per callback over 134,138 callbacks. | Not adopted as the default: the adapter is the slower path, as expected. It stays available for strategies chosen at run time. |
+| Dispatch strategy callbacks through a virtual adapter (experiment) | Binding the strategy at compile time lets its callbacks inline into the event loop. A virtual call per callback should cost a few nanoseconds each. | 17.59 to 19.15 ms per replay (0.92x). Per replay of the same stream the virtual adapter took +1.56 ms relative to the concept-bound strategy, which is +11.7 ns per callback over 134,138 callbacks. | Not adopted as the default: the adapter is the slower path, as expected. It stays available for strategies chosen at run time. |
 <!-- END GENERATED: optimisation_log -->
 
 What is missing from this log is the evidence that would normally prompt each step: a flame
