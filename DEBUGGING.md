@@ -649,6 +649,99 @@ Both benchmarks now fail rather than report if their output is wrong (the replay
 the sequence must be intact). The write-up in `BENCHMARKS.md` gives the per-callback figure
 with the replay counts it was derived from.
 
+## The benchmark's "same book" fingerprint was zero for every implementation
+
+- Date / commit: 2026-11-12, `ea838ac`
+- Area: performance (measurement)
+- Tools: reading the rendered table
+
+### Symptom
+The first full benchmark table had a fingerprint column meant to prove that every book
+implementation builds the same books:
+
+```
+| baseline                   | ... | `00000000` |
+| flat_orders/reserve        | ... | `00000000` |
+| optimised/reserve/prefetch | ... | `00000000` |
+```
+
+Identical, as hoped, and identically zero.
+
+### Investigation
+In quick trials on the first 60 million messages the fingerprint had been a real number
+(`224614349`) and equal across implementations, which is why it was trusted. The fingerprint
+hashes every level of every book once the run has finished. `book-check` had already reported
+the relevant fact about the full day: "live orders at end: 0".
+
+### Root cause
+At the end of the trading day every order has been deleted, so every book is empty and the
+hash of nothing is zero. On the full file the check passed for any implementation at all,
+including one that built wrong books and then emptied them. The benchmark's own guard ("abort
+if the fingerprint changes between runs") was equally blind.
+
+### Fix
+The fingerprint now folds in the state of every book every 2^24 book operations (16
+checkpoints across the reference day) and once at the end. Re-run over the full day, all five
+variants report `1972692282` with 16 checkpoints.
+
+### Prevention
+The rendered table prints the number of checkpoints beside the fingerprint and says "not
+recorded" when there were none, so an end-of-day-only fingerprint cannot be mistaken for
+evidence again. Equivalence does not rest on this check alone: the property test compares
+implementations after every message and the Python reference book is compared level by level.
+
+## Half the benchmark suite was measured while the laptop was asleep
+
+- Date / commit: 2026-11-12, `ea838ac` (sleep guard) and `a398838` (results removed)
+- Area: performance (measurement)
+- Tools: `pmset -g log`, file modification times, the results themselves
+
+### Symptom
+The suite ran unattended for three hours. The earlier results were tight; the later ones were
+absurd:
+
+```
+optimised/reserve/prefetch   all messages   p99 799 ns   max 710920.50 ms
+passive_maker/async   123.05 (42.29 to 230.35) s
+passive_maker/none    159.21 (40.70 to 362.72) s
+passive_maker/sync    325.32 (45.52 to 1023.37) s
+```
+
+A message taking 710 seconds, and the same end-to-end workload taking between 42 and 1,023
+seconds, with recording off apparently slower than recording on.
+
+### Investigation
+1. The suite already ran under `caffeinate` after the earlier sleep incident, so sleep was not
+   the first suspect. But a 710-second gap in one message is not something code can do.
+2. `pmset -g log | grep "Entering Sleep"`, bucketed by minute, against the modification time of
+   each result file:
+
+   ```
+   ... 21:21(1) 21:22(1) 22:45(1) 22:50(1) 23:03(1) 23:04(1) 23:14(1) 23:15(1) ...
+   21:22 parse_mmap_decode.json  ...  22:31 book_optimised_prefetch.json
+   22:38 latency_baseline.json   22:44 latency_optimised.json
+   23:15 latency_optimised_prefetch.json   23:29 e2e_async.json   00:05 e2e_sync.json
+   ```
+
+   No sleep at all between 21:22 and 22:45; "Maintenance Sleep" every few minutes after that.
+   Everything finished by 22:44 is clean. Everything after is not.
+3. Why `caffeinate` stopped helping at 22:45 is not known. The log entries read "Using Batt",
+   and a laptop on battery with its lid shut is allowed to nap whatever a process asserts.
+
+### Root cause
+The machine was asleep for parts of the later benchmarks, and wall-clock timing counts sleep
+as work.
+
+### Fix
+The corrupt result files were deleted, not averaged or footnoted; `NOTES.md` in the results
+directory lists them and the evidence. `run_bench.sh` now counts "Entering Sleep" entries in
+the power log before and after each benchmark and repeats any during which the count changed,
+up to five times. The deleted measurements were repeated under that guard.
+
+### Prevention
+The guard, and the habit that found the problem: results are read before they are published,
+and a number that cannot be true is investigated, not reported.
+
 ## Entry template
 
 ```markdown

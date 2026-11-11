@@ -1,0 +1,5 @@
+# Result directories that BENCHMARKS.md and README.md are generated from, oldest first.
+# Where two directories hold the same benchmark and variant, the later one wins.
+# Both were measured on the same machine in the same state: battery, Low Power Mode on.
+2026-11-11-493c268
+2026-11-12-3e01287

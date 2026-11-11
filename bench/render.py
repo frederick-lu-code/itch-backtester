@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""Regenerates the generated tables in BENCHMARKS.md from raw results.
+"""Regenerates the generated tables in BENCHMARKS.md and README.md from raw results.
 
 Usage: python3 bench/render.py [bench/results/<dir> ...]
 
-With no arguments it uses the most recent directory under bench/results, so that every number
-on the page comes from one run of the suite on one machine in one state. Each table lives
+With no arguments it uses the directories listed in bench/results/CURRENT. Each table lives
 between `<!-- BEGIN GENERATED: name -->` and `<!-- END GENERATED: name -->` markers, so numbers
 in BENCHMARKS.md are never typed by hand. Standard library only.
 """
@@ -292,6 +291,73 @@ def targets_table(results: list[dict], latency: list[dict]) -> str:
     return table(["Benchmark", "Aim", "Measured on this machine", "Result"], rows)
 
 
+def best_book(results: list[dict]) -> dict | None:
+    by_variant = {r["variant"]: r for r in results if r["benchmark"] == "book_build"}
+    return by_variant.get("optimised/reserve/prefetch") or by_variant.get("optimised/reserve")
+
+
+def conditions(sysinfo: dict) -> str:
+    power = "on battery" if "Battery" in sysinfo.get("power", "") else "on mains power"
+    if sysinfo.get("low_power_mode") == "1":
+        power += " in Low Power Mode"
+    return f"{sysinfo.get('cpu_model', 'unknown CPU')}, {power}"
+
+
+def headline(results: list[dict], latency: list[dict], sysinfo: dict) -> str | None:
+    book = best_book(results)
+    if not book:
+        return None
+    timed = next((r for r in latency if r["variant"] == book["variant"]), None)
+    text = (f"**Headline result:** the order book for all 8,906 symbols is rebuilt from a full "
+            f"day of {book['messages'] / 1e6:.0f} million messages at "
+            f"**{med(per_second(book)) / 1e6:.1f} million messages per second** on one thread")
+    if timed:
+        entry = next(e for e in timed["latency"] if e["type"] == "all")
+        text += (f", with a median of {entry['p50_ns']:.0f} ns and a 99th percentile of "
+                 f"**{entry['p99_ns']:.0f} ns** per message")
+    return text + f" ({conditions(sysinfo)})."
+
+
+def bench_summary(results: list[dict], latency: list[dict], sysinfo: dict) -> str | None:
+    by_key = {(r["benchmark"], r["variant"]): r for r in results}
+
+    def rate(benchmark: str, variant: str) -> str:
+        r = by_key.get((benchmark, variant))
+        return f"{med(per_second(r)) / 1e6:.1f}" if r else "not measured"
+
+    book = best_book(results)
+    if not book:
+        return None
+    base = by_key.get(("book_build", "baseline/reserve"))
+    rows = [
+        ["Parse only, every field decoded", f"{rate('parse_only', 'mmap/decode')} M msg/s mapped, "
+         f"{rate('parse_only', 'read/decode')} with `read()`"],
+        ["Book build, all symbols, baseline book", f"{rate('book_build', 'baseline/reserve')} M msg/s"],
+        ["Book build, all symbols, optimised book", f"{med(per_second(book)) / 1e6:.1f} M msg/s"
+         + (f" ({med(per_second(book)) / med(per_second(base)):.2f}x the baseline)" if base else "")],
+    ]
+    timed = next((r for r in latency if r["variant"] == book["variant"]), None)
+    if timed:
+        e = next(x for x in timed["latency"] if x["type"] == "all")
+        rows.append(["Book build latency per message",
+                     f"p50 {e['p50_ns']:.0f} ns, p99 {e['p99_ns']:.0f} ns, "
+                     f"p99.9 {e['p999_ns']:.0f} ns"])
+    e2e = by_key.get(("end_to_end", "passive_maker/async"))
+    if e2e:
+        rows.append(["End-to-end backtest, PassiveMaker on 10 symbols, all books, recording on",
+                     f"{med(e2e['run_seconds']):.1f} s wall, "
+                     f"{med(per_second(e2e)) / 1e6:.1f} M msg/s"])
+    shards = sorted((r for r in results if r["benchmark"] == "sharding"), key=lambda r: r["shards"])
+    if len(shards) > 1:
+        best = max(shards, key=lambda r: med(per_second(r)))
+        rows.append(["Sharded replay, all books, no strategy",
+                     f"{med(per_second(best)) / 1e6:.1f} M msg/s with {best['shards']} shards "
+                     f"({med(per_second(best)) / med(per_second(shards[0])):.2f}x one engine)"])
+    rows.append(["Hot-path allocations after start-up", "0 (counted by a replaced `operator new`)"])
+    return (f"Measured on: {conditions(sysinfo)}. Medians; ranges and run counts are in "
+            f"BENCHMARKS.md.\n\n" + table(["Benchmark", "Result"], rows))
+
+
 def replace_block(text: str, name: str, body: str | None) -> str:
     if body is None:
         return text
@@ -305,11 +371,20 @@ def replace_block(text: str, name: str, body: str | None) -> str:
 
 
 def main(argv: list[str]) -> int:
-    # Most recent by the time recorded inside each directory: names sort by date and then by
-    # commit hash, which says nothing about order within a day.
-    available = sorted((d for d in RESULTS.iterdir() if (d / "sysinfo.json").is_file()),
-                       key=lambda d: json.loads((d / "sysinfo.json").read_text())["date_utc"])
-    directories = [Path(a).resolve() for a in argv] or available[-1:]
+    # With no arguments, publish the directories named in bench/results/CURRENT (one per line,
+    # later ones overriding earlier ones benchmark by benchmark), or failing that the newest
+    # by the time recorded inside it. CURRENT exists so that which runs the page shows is a
+    # reviewed, committed choice, not an accident of directory names.
+    current = RESULTS / "CURRENT"
+    if argv:
+        directories = [Path(a).resolve() for a in argv]
+    elif current.is_file():
+        directories = [RESULTS / line.strip() for line in current.read_text().splitlines()
+                       if line.strip() and not line.startswith("#")]
+    else:
+        available = sorted((d for d in RESULTS.iterdir() if (d / "sysinfo.json").is_file()),
+                           key=lambda d: json.loads((d / "sysinfo.json").read_text())["date_utc"])
+        directories = available[-1:]
     if not directories:
         print("no result directories found", file=sys.stderr)
         return 1
@@ -349,6 +424,14 @@ def main(argv: list[str]) -> int:
     text = replace_block(text, "optimisation_log", log_table(results, micro, latency))
     text = replace_block(text, "targets", targets_table(results, latency))
     TARGET.write_text(text)
+
+    readme_path = ROOT / "README.md"
+    readme = readme_path.read_text()
+    for name, body in (("headline", headline(results, latency, sysinfo)),
+                       ("bench_summary", bench_summary(results, latency, sysinfo))):
+        if body is not None and f"BEGIN GENERATED: {name}" in readme:
+            readme = replace_block(readme, name, body)
+    readme_path.write_text(readme)
     print(f"updated {TARGET.relative_to(ROOT)} from {', '.join(d.name for d in directories)}")
     return 0
 
