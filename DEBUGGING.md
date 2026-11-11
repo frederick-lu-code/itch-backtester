@@ -218,6 +218,437 @@ Restored the file from the previous commit and rewrote the entries through a quo
 Documentation is now always written through quoted heredocs. The mangled commit stays in the
 history as the record of what happened.
 
+## The compiler could not link anything on the development machine
+
+- Date / commit: 2026-11-11, no code change (environment); worked around from the first build
+- Area: build
+- Tools: the linker's own error, `xcrun`, `ls`
+
+### Symptom
+The first CMake configure failed before reaching any project code:
+
+```
+ld: multiple errors: tapi error: malformed file
+/Library/Developer/CommandLineTools/SDKs/MacOSX27.0.sdk/usr/lib/libSystem.B.tbd:4:20: error: unknown architecture
+                   arm64e.x1-macos, arm64e.x1-maccatalyst ]
+```
+
+A one-line `int main(){}` failed the same way, so it was not CMake.
+
+### Investigation
+`xcrun --show-sdk-path` reported `MacOSX27.0.sdk`, on a machine running macOS 26.6 with
+Command Line Tools 26.6. `ls` on the SDK directory showed three SDKs, the 27.0 one dated a
+month earlier than the others: a leftover from a beta. The installed linker predates it and
+does not know an architecture name its library stubs use.
+
+### Root cause
+The default SDK was newer than the toolchain that had to read it.
+
+### Fix
+`export SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk` for every build.
+Nothing in the repository changes; the README's macOS note describes it.
+
+### Prevention
+None in the repository: it is a property of one machine. CI on Ubuntu is the authoritative
+build precisely so that a broken local toolchain cannot hide or invent problems.
+
+## A comment swallowed the line after it, but only for GCC
+
+- Date / commit: 2026-11-11, `0c41dee`
+- Area: build
+- Tools: CI logs (GCC 13)
+
+### Symptom
+Every GCC job in CI failed, while every Clang job and every local build passed:
+
+```
+apps/book_dump.cpp:6:1: error: multi-line comment [-Werror=comment]
+```
+
+### Investigation
+Line 6 was inside the usage comment at the top of the file, showing a shell command split
+across two lines with a trailing backslash.
+
+### Root cause
+A backslash at the end of a `//` comment line continues the comment onto the next line. Here
+the next line was also a comment, so nothing was lost, but GCC warns (rightly: had the next
+line been code, it would have vanished) and `-Werror` made it fatal. Clang does not warn by
+default. The failure also went unseen for several pushes because CI results were not being
+checked after each one.
+
+### Fix
+Removed the backslash. From this point on every push is followed by a check of its CI run.
+
+### Prevention
+CI builds with both compilers; that is what caught it. A grep for comment lines ending in a
+backslash found no others.
+
+## The config loader accepted `build_all_books = 1`
+
+- Date / commit: 2026-11-11, `d1e360f` (found and fixed before the loader was first committed)
+- Area: build (configuration)
+- Tools: GoogleTest
+
+### Symptom
+```
+tests/unit/config_test.cpp:128: Failure
+Value of: load("build_all_books = 1\n", error)
+  Actual: true
+Expected: false
+```
+
+### Investigation
+The loader read booleans with toml++'s `node.value<bool>()`. Its documentation says
+`value<T>()` "permits conversions": an integer is a valid source for a `bool`, a `bool` or a
+float that happens to be whole is a valid source for an integer.
+
+### Root cause
+A wrong assumption about a library call. The loader's whole point is to be strict (unknown
+keys are errors so a typo cannot leave a risk limit at its default), and a silent type
+conversion defeats that: `max_position = true` would have meant a limit of one share.
+
+### Fix
+Every read uses `value_exact<T>()`, which requires the TOML type to match.
+
+### Prevention
+`Config.WrongTypesAndRangesAreRejected` now covers integer-for-boolean, boolean-for-integer,
+float-for-integer and integer-for-string.
+
+## Position was marked against an after-hours quote of 200.00 x 414.95
+
+- Date / commit: 2026-11-11, `0b150b3`
+- Area: risk
+- Tools: an independent recomputation in Python from the run's own files
+
+### Symptom
+The first full-day PassiveMaker run reported, for one symbol:
+
+```
+TSLA     position      -55  realised     -8689.93  unrealised      5894.39
+```
+
+An unrealised gain of 5,894 dollars on 55 shares is 107 dollars a share, on a stock that moved
+a few dollars all day.
+
+### Investigation
+1. First hypothesis: the average-cost bookkeeping in the risk gate drifts, since that is the
+   intricate part (partial closes, trades through zero). Recomputed position, realised and
+   unrealised PnL for every symbol in Python from `fills.bin` and `bbo.bin` alone:
+
+   ```
+   TSLA pos -55 -55 realised -86899294 -86899294 unreal2 117887888 117887888 ... last bid/ask 2000000 4149500
+   AMZN pos -200 -200 realised -240484700 -240484700 unreal2 -92500000 -92500000 ... last bid/ask 18400000 19000000
+   ```
+
+   Each pair of numbers is Python's figure and then the engine's. They agree exactly for all
+   ten symbols, so the bookkeeping was right. Dead end, but a useful one: the script became a
+   permanent test.
+2. The last column was the answer. The final top of book for TSLA was 200.0000 bid, 414.9500
+   offered, a mid of 307.
+
+### Root cause
+Positions were marked to the mid on every top-of-book change, including long after the close,
+when the visible book is a few stale orders far from the market. The arithmetic was correct
+and the mark was meaningless. It could also have tripped the loss-limit kill switch on a
+position that had not lost anything.
+
+### Fix
+The engine marks a position only while its symbol can trade (session open, or extended hours
+enabled, and not halted). The last such mark stands afterwards. Each `bbo.bin` record carries
+a "tradable" flag so analysis marks on exactly the same records.
+
+### Prevention
+`test_pnl_recomputed_from_fills_matches_the_engine_exactly` recomputes PnL in Python for every
+symbol of a run and requires equality to the last price unit, and
+`test_pnl_timeline_ends_at_the_engines_figure` does the same for the plotted timeline.
+
+## Largest possible order overflowed the notional calculation
+
+- Date / commit: 2026-11-11, `7fbf55b`
+- Area: risk
+- Tools: UndefinedBehaviorSanitizer
+
+### Symptom
+A risk test that sent a deliberately huge order aborted under the `asan` preset:
+
+```
+include/itchbt/risk/risk.hpp:233:59: runtime error: signed integer overflow:
+4000000000 * 4000000000 cannot be represented in type 'std::int64_t' (aka 'long long')
+SUMMARY: UndefinedBehaviorSanitizer: undefined-behavior include/itchbt/risk/risk.hpp:233:59
+```
+
+### Investigation
+Line 233 computed `std::int64_t{price} * qty`. Price and quantity are both 32-bit unsigned, so
+their product can reach about 1.8e19; a signed 64-bit integer stops at 9.2e18.
+
+### Root cause
+The widening was to the wrong type. The comment beside the code said prices were widened "so
+the product cannot overflow", which was true only for realistic orders. The risk gate is the
+one component whose job is to cope with unrealistic ones: with every limit at its default,
+a strategy bug that sent this order would have been undefined behaviour instead of a reject.
+
+### Fix
+The product is formed in unsigned 64-bit, which always fits, and compared with the limit
+before being narrowed. Independently of configuration, a hard ceiling of 2^56 price units x
+shares (about 7.2 trillion dollars) applies to one order and to gross exposure, leaving a
+factor of 128 of headroom for doubled PnL and adverse marks.
+
+### Prevention
+`RiskChecks.AbsurdNotionalIsRejectedNotOverflowed` sends the largest representable order and
+`RiskChecks.HardNotionalCeilingAppliesWhateverTheConfigSays` tests the ceiling at its exact
+boundary. Both run under UBSan in CI.
+
+## A test expected the wrong answer from the reject-rate window
+
+- Date / commit: 2026-11-11, `7fbf55b`
+- Area: risk (test)
+- Tools: GoogleTest, pencil
+
+### Symptom
+```
+tests/unit/risk_test.cpp:444: Failure
+Value of: gate.note_reject(1'150)
+  Actual: true
+Expected: false
+```
+
+### Investigation
+Threshold 3, window 1,000 ns, rejects at 100, 200, 300, 1101, 1150. Worked by hand: at 1150
+the last four rejects are 200, 300, 1101 and 1150, which span 950 ns. Four rejects inside one
+window is "more than three": the switch should trip, and it did.
+
+### Root cause
+The test was wrong, not the code. It had been written from the idea "the first three are old
+by now" without redoing the window arithmetic for each new reject.
+
+### Fix
+The test now states, beside each call, which four timestamps are being compared and their
+span.
+
+### Prevention
+Boundary tests in this file carry the arithmetic in a comment, so a reviewer can check the
+expectation without running anything.
+
+## A commit that did not compile was pushed
+
+- Date / commit: 2026-11-11, broken in `fcf1632`, fixed in `2535144`
+- Area: build (process)
+- Tools: reading the build log that had scrolled past
+
+### Symptom
+After a lint clean-up, the summary line said `100% tests passed` and the commit was pushed.
+The output above that line contained:
+
+```
+include/itchbt/util/spsc_ring.hpp:33:11: error: no matching constructor for
+initialization of 'std::vector<itchbt::record::Recorder::Slot>'
+   33 |           slots_(std::make_unique<T[]>(capacity_)) {}
+```
+
+### Investigation
+The member had been changed from `std::unique_ptr<T[]>` to `std::vector<T>` by a scripted
+text replacement, and the matching replacement in the constructor silently did nothing:
+clang-format had re-wrapped that line since the pattern was written. The build failed. The
+test step ran anyway and executed the previous, stale binaries, which passed.
+
+### Root cause
+Two things. A scripted edit that fails to match must be an error, not a no-op. And the
+commit step did not depend on the build step's exit status, only on having reached the end
+of the script.
+
+### Fix
+The constructor was corrected. `scripts/check.sh` now formats, builds and tests under
+`set -e` and is what runs before a commit; scripted edits assert that they matched.
+
+### Prevention
+`scripts/check.sh`, and CI, which would have caught it within minutes regardless. The broken
+commit stays in the history.
+
+## New files reached CI unformatted
+
+- Date / commit: 2026-11-11, `f5d5b26`
+- Area: build (tooling)
+- Tools: CI logs
+
+### Symptom
+```
+src/record/schema.cpp:23:37: error: code should be clang-formatted [-Wclang-format-violations]
+```
+
+although `scripts/format.sh` had been run before the commit.
+
+### Investigation
+`format.sh` took its file list from `git ls-files`, which lists tracked files. `schema.cpp`
+was new: it was formatted by nobody, then added and committed.
+
+### Root cause
+The formatter only saw files git already knew about.
+
+### Fix
+The file list is now `git ls-files --cached --others --exclude-standard`: tracked files plus
+untracked ones that are not ignored.
+
+### Prevention
+`scripts/check.sh` runs `format.sh --check` first, over the same list.
+
+## Flat order map treated an empty slot as a match for one reference
+
+- Date / commit: 2026-11-11, `8c3c017` (found and fixed before the map was first committed)
+- Area: book
+- Tools: GoogleTest
+
+### Symptom
+```
+tests/property/book_property_test.cpp:240: Failure
+Expected equality of these values:
+  flat.find(0xFFFFFFFFFFFFFFFFULL)
+    Which is: 0x615000000088
+  nullptr
+```
+
+`find` returned a pointer for a reference that had never been inserted.
+
+### Investigation
+The table stores `reference + 1` so that a stored key of zero can mean "empty". For reference
+2^64 - 1 the stored key wraps to zero. `insert` already refused that reference, but `find`
+probed to the first empty slot and compared its key (zero) with the wanted key (zero).
+
+### Root cause
+The empty marker and one legal key were the same value, and only one of the three operations
+guarded against it. `erase` had the same hole and was worse: it would have "erased" an empty
+slot and decremented the size.
+
+### Fix
+`find` and `erase` both treat a stored key equal to the empty marker as absent.
+
+### Prevention
+`FlatOrderMap.ExtremeReferences` covers insert, find and erase of that reference and checks
+the size afterwards. ITCH references are small sequential numbers, so the feed could never
+have triggered this; the test exists because the fuzzer feeds the book arbitrary references.
+
+## The tick counter read nothing on Apple Silicon
+
+- Date / commit: 2026-11-11, `48dfcd9` (found and fixed before the code was first committed)
+- Area: performance (measurement)
+- Tools: the benchmark's own output
+
+### Symptom
+The first run of the timing build reported:
+
+```
+"tick_ns": 1.000,
+"latency": [{"type": "all", "count": 60000000, "p50_ns": 18446754034956730368.0,
+             "p90_ns": 18446754034956730368.0, ... "mean_ns": 969637653.1}
+```
+
+A median latency of 1.8e19 ns is 2^64: an unsigned subtraction that went negative.
+
+### Investigation
+`tick_ns` of exactly 1.000 is the calibration routine's fallback for "the counter did not
+advance". So `ticks_begin()` was returning a constant, or garbage. Its body was one line of
+inline assembly: `"isb; mrs %0, cntvct_el0"`.
+
+### Root cause
+In Apple's assembler for arm64, `;` begins a comment. Everything after `isb` was discarded,
+the `mrs` that reads the counter never ran, and the function returned whatever was in the
+output register. On Linux the same string assembles as two instructions, so CI could not
+have caught it either: nothing there runs the timing build.
+
+### Fix
+The two instructions are separated by a newline (`"isb\n\tmrs %0, cntvct_el0"`), which both
+assemblers accept.
+
+### Prevention
+`Ticks.CounterAdvancesAndCalibratesToAPlausibleRate` requires the counter to advance and the
+calibrated rate to be physically plausible. It runs on both platforms.
+
+## Benchmark throughput halved between two sessions, and one message took 112 seconds
+
+- Date / commit: 2026-11-11, addressed in `scripts/run_bench.sh` and `scripts/sysinfo.sh`
+- Area: performance
+- Tools: `pmset`, `uptime`, `ps`, the latency histogram's maximum
+
+### Symptom
+Re-running the baseline book build to compare it with the new book gave less than half the
+throughput recorded a few hours earlier (4.8 million messages a second then):
+
+```
+baseline
+measured run 0: 27.360 s, 2.19 M msg/s
+```
+
+and the first latency run reported a maximum of 112 seconds for a single message while the
+whole run took 131:
+
+```
+measured run 0: 131.025 s, 0.46 M msg/s
+... {"type": "E", "count": 1017818, "p50_ns": 125.0, ... "max_ns": 112754770653.9, ...}
+```
+
+### Investigation
+1. Code regression? The baseline book had not changed, and the earlier binary gave the same
+   low number. Not the code.
+2. Something else using the machine? `uptime` showed a load average of 2 to 3 but `ps` showed
+   nothing above 12% of a core.
+3. A 112-second gap inside one message is not a slow message, it is a stopped process. The
+   machine was unattended; `pmset -g` showed `sleep 1` and `displaysleep 2`. It had gone to
+   sleep in the middle of the run.
+4. `pmset -g batt` showed "Now drawing from 'Battery Power'" where the earlier results had
+   recorded AC power, and `pmset -g` showed `lowpowermode 1`. Low Power Mode caps the
+   performance cores.
+
+### Root cause
+Two changes in the machine's state, neither in the code: it had been unplugged, which switched
+on Low Power Mode, and nothing was stopping it from sleeping during a run.
+
+### Fix
+`run_bench.sh` re-executes itself under `caffeinate -d -i -m` on macOS so the machine cannot
+sleep mid-run. `sysinfo.sh` records Low Power Mode and the renderer prints it in the machine
+table in bold. The whole suite is always run in one session and `render.py` reads one results
+directory by default, so every ratio on the page compares runs taken in the same state.
+
+### Prevention
+The machine table makes the state visible next to every number. Changing Low Power Mode needs
+administrator rights, so it could not be turned off for these runs; `BENCHMARKS.md` says so.
+
+## A micro-benchmark said virtual calls were twice as fast as inlined ones
+
+- Date / commit: 2026-11-11, replaced before the benchmark was first committed
+- Area: performance (measurement)
+- Tools: Google Benchmark, reading the loop
+
+### Symptom
+```
+BM_DispatchConcept        2.14 ns
+BM_DispatchVirtual       0.983 ns
+BM_SpscPushPop           0.914 ns
+```
+
+A strategy callback reached through a virtual call measured faster than the same callback
+inlined, and a push plus a pop of a 56-byte slot took under a nanosecond.
+
+### Investigation
+Each benchmark was a tight loop around one call with `DoNotOptimize` on an argument. In the
+"concept" loop that forced the argument through memory on every iteration and the inlined
+callback's accumulator joined the same store-to-load chain; in the "virtual" loop the call
+boundary happened to break the chain. The numbers measured the loops' dependency chains, not
+dispatch. The ring benchmark ran producer and consumer on one thread, where the optimiser can
+see both ends.
+
+### Root cause
+The benchmarks were too small to contain the thing they claimed to measure.
+
+### Fix
+Dispatch is now measured by replaying the same 400,000-message stream through the whole engine
+with a concept-bound strategy and again through the virtual adapter, and dividing the
+difference by the number of callbacks. The ring is measured with a producer and a consumer on
+separate threads, the consumer checking sequence numbers.
+
+### Prevention
+Both benchmarks now fail rather than report if their output is wrong (the replay must succeed,
+the sequence must be intact). The write-up in `BENCHMARKS.md` gives the per-callback figure
+with the replay counts it was derived from.
+
 ## Entry template
 
 ```markdown
