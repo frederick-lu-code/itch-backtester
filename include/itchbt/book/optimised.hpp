@@ -4,6 +4,8 @@
 // agree with it on every message (tests/property/book_property_test.cpp); each was kept only
 // because it measured faster (BENCHMARKS.md, optimisation log).
 
+#include "itchbt/book/types.hpp"
+
 #include <algorithm>
 #include <bit>
 #include <cstddef>
@@ -11,8 +13,6 @@
 #include <optional>
 #include <utility>
 #include <vector>
-
-#include "itchbt/book/types.hpp"
 
 namespace itchbt::book {
 
@@ -37,11 +37,11 @@ public:
 
     [[nodiscard]] Order* find(OrderRef ref) noexcept {
         const std::size_t i = locate(ref);
-        return slots_[i].key == stored(ref) ? &slots_[i].order : nullptr;
+        return slots_[i].key == stored(ref) && stored(ref) != kEmpty ? &slots_[i].order : nullptr;
     }
     [[nodiscard]] const Order* find(OrderRef ref) const noexcept {
         const std::size_t i = locate(ref);
-        return slots_[i].key == stored(ref) ? &slots_[i].order : nullptr;
+        return slots_[i].key == stored(ref) && stored(ref) != kEmpty ? &slots_[i].order : nullptr;
     }
 
     /// Returns false, leaving the map unchanged, if `ref` is already present (or is the one
@@ -64,7 +64,9 @@ public:
 
     void erase(OrderRef ref) noexcept {
         std::size_t hole = locate(ref);
-        if (slots_[hole].key != stored(ref)) {
+        // The second test matters: reference 2^64 - 1 is stored as 0, the empty marker, so
+        // without it an empty slot would "match" and the size would be decremented.
+        if (slots_[hole].key != stored(ref) || stored(ref) == kEmpty) {
             return;
         }
         // Backward-shift deletion: walk the run that follows the hole and move back any entry
@@ -94,7 +96,8 @@ public:
         __builtin_prefetch(&slots_[home_of(stored(ref))]);
     }
 
-    template <typename F> void for_each(F&& f) const {
+    template <typename F>
+    void for_each(F&& f) const {
         for (const Slot& slot : slots_) {
             if (slot.key != kEmpty) {
                 f(slot.key - 1, slot.order);
@@ -171,7 +174,8 @@ enum class LevelSearch : std::uint8_t {
 /// that matter sit together at the end of one array, and adding or removing a level near the
 /// best moves only the few entries beyond it. A deep insert costs a memmove of 16-byte
 /// entries, which is still cheap next to a tree's pointer chasing.
-template <LevelSearch Search> class VectorLevelsT {
+template <LevelSearch Search>
+class VectorLevelsT {
 public:
     [[nodiscard]] Level* find(std::uint32_t key) noexcept {
         const std::size_t i = lower_bound(key);
@@ -206,7 +210,8 @@ public:
         return std::pair{levels_.back().key, levels_.back().level};
     }
 
-    template <typename F> void for_each_best_first(F&& f) const {
+    template <typename F>
+    void for_each_best_first(F&& f) const {
         for (std::size_t i = levels_.size(); i-- > 0;) {
             if (!f(levels_[i].key, levels_[i].level)) {
                 return;
@@ -223,9 +228,9 @@ private:
     /// Index of the first entry whose key is not less than `key`.
     [[nodiscard]] std::size_t lower_bound(std::uint32_t key) const noexcept {
         if constexpr (Search == LevelSearch::Binary) {
-            const auto it = std::lower_bound(
-                levels_.begin(), levels_.end(), key,
-                [](const Entry& entry, std::uint32_t k) { return entry.key < k; });
+            const auto it =
+                std::lower_bound(levels_.begin(), levels_.end(), key,
+                                 [](const Entry& entry, std::uint32_t k) { return entry.key < k; });
             return static_cast<std::size_t>(it - levels_.begin());
         } else {
             std::size_t i = levels_.size();

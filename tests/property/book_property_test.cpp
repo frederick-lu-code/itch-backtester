@@ -2,6 +2,13 @@
 // after every single message, and the flat order map must behave exactly like
 // std::unordered_map under random inserts, erases and lookups.
 
+#include "support/random_stream.hpp"
+
+#include "itchbt/book/book.hpp"
+#include "itchbt/itch/parser.hpp"
+
+#include <gtest/gtest.h>
+
 #include <cstddef>
 #include <cstdint>
 #include <random>
@@ -9,17 +16,12 @@
 #include <unordered_map>
 #include <vector>
 
-#include <gtest/gtest.h>
-
-#include "itchbt/book/book.hpp"
-#include "itchbt/itch/parser.hpp"
-#include "support/random_stream.hpp"
-
 namespace itchbt::book {
 namespace {
 
 /// Applies each book message to a baseline book and a candidate, comparing after every one.
-template <typename Candidate> struct Differ : itch::NullHandler {
+template <typename Candidate>
+struct Differ : itch::NullHandler {
     using itch::NullHandler::on;
 
     BaselineBooks baseline;
@@ -28,7 +30,8 @@ template <typename Candidate> struct Differ : itch::NullHandler {
     std::uint64_t compared = 0;
     std::string failure;
 
-    template <typename Message> void both(const Message& m) {
+    template <typename Message>
+    void both(const Message& m) {
         const auto expected = apply(baseline, m);
         const auto actual = apply(candidate, m);
         check_change(expected, actual);
@@ -44,8 +47,8 @@ template <typename Candidate> struct Differ : itch::NullHandler {
     void check_change(const BookChange& e, const BookChange& a) {
         if (e.applied != a.applied || e.top_changed != a.top_changed ||
             e.order_removed != a.order_removed || e.price != a.price || e.delta != a.delta ||
-            e.level_before != a.level_before || e.level_after != a.level_after ||
-            e.seq != a.seq || e.side != a.side || e.locate != a.locate) {
+            e.level_before != a.level_before || e.level_after != a.level_after || e.seq != a.seq ||
+            e.side != a.side || e.locate != a.locate) {
             fail("change record differs");
         }
     }
@@ -89,7 +92,8 @@ template <typename Candidate> struct Differ : itch::NullHandler {
     }
 };
 
-template <typename Candidate> class BookEquivalence : public ::testing::Test {};
+template <typename Candidate>
+class BookEquivalence : public ::testing::Test {};
 using Candidates = ::testing::Types<OptimisedBooks, FlatOrderBooks, BinaryLevelBooks>;
 TYPED_TEST_SUITE(BookEquivalence, Candidates);
 
@@ -131,12 +135,8 @@ TYPED_TEST(BookEquivalence, HandlesAnomaliesExactlyLikeTheBaseline) {
             EXPECT_EQ(baseline.add(ref, 5, side, qty, price).applied,
                       candidate.add(ref, 5, side, qty, price).applied);
             break;
-        case 1:
-            EXPECT_EQ(baseline.reduce(ref, qty).delta, candidate.reduce(ref, qty).delta);
-            break;
-        case 2:
-            EXPECT_EQ(baseline.remove(ref).applied, candidate.remove(ref).applied);
-            break;
+        case 1: EXPECT_EQ(baseline.reduce(ref, qty).delta, candidate.reduce(ref, qty).delta); break;
+        case 2: EXPECT_EQ(baseline.remove(ref).applied, candidate.remove(ref).applied); break;
         default: {
             const OrderRef new_ref = rng() % 300;
             EXPECT_EQ(baseline.replace(ref, new_ref, qty, price).added.applied,
@@ -167,9 +167,7 @@ TEST(FlatOrderMap, BehavesLikeUnorderedMapUnderRandomOperations) {
         order.seq = static_cast<Sequence>(i);
         order.qty = static_cast<Qty>(rng());
         switch (rng() % 3) {
-        case 0:
-            ASSERT_EQ(flat.insert(ref, order), reference.emplace(ref, order).second);
-            break;
+        case 0: ASSERT_EQ(flat.insert(ref, order), reference.emplace(ref, order).second); break;
         case 1:
             flat.erase(ref);
             reference.erase(ref);
@@ -240,6 +238,7 @@ TEST(FlatOrderMap, ExtremeReferences) {
     // The one unrepresentable reference is refused rather than corrupting the table.
     EXPECT_FALSE(flat.insert(0xFFFFFFFFFFFFFFFFULL, Order{}));
     EXPECT_EQ(flat.find(0xFFFFFFFFFFFFFFFFULL), nullptr);
+    flat.erase(0xFFFFFFFFFFFFFFFFULL); // must not disturb the count
     EXPECT_NE(flat.find(0), nullptr);
     EXPECT_EQ(flat.size(), 2U);
 }
