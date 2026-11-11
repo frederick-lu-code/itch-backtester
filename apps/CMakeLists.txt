@@ -4,3 +4,5 @@ function(itchbt_add_app name)
 endfunction()
 
 itchbt_add_app(itch-stats itch_stats.cpp)
+itchbt_add_app(book-dump book_dump.cpp)
+itchbt_add_app(book-check book_check.cpp)
