@@ -23,6 +23,8 @@ namespace itchbt::itch {
 
 inline constexpr std::size_t kLengthPrefixSize = 2;
 inline constexpr std::size_t kHeaderSize = 11;
+/// Bytes of the following message a lookahead() hook may read: type, header and reference.
+inline constexpr std::size_t kMinLookahead = 19;
 
 namespace detail {
 
@@ -216,7 +218,8 @@ decode_order_executed_with_price(const std::byte* m) noexcept {
 ///
 /// A handler provides on(const T&) for each struct in messages.hpp and
 /// on_skipped(const Header&) for the types the engine recognises but does not use. It may also
-/// provide at(offset), called before each message with the offset of its record, and done(),
+/// provide at(offset), called before each message with the offset of its record, after(),
+/// called once it has been handled, and done(),
 /// checked after each message to stop early. Neither costs anything when absent.
 template <typename Handler>
 inline void dispatch(const std::byte* m, Handler& handler) {
@@ -306,7 +309,21 @@ parse(std::span<const std::byte> data, Handler& handler,
         if constexpr (requires { handler.at(std::uint64_t{}); }) {
             handler.at(pos);
         }
+        // Handlers that can use a head start on the following message (to prefetch what it
+        // will touch) opt in to a look at it. Only its type and order reference are promised:
+        // the shortest message, 12 bytes, is too short to carry a reference, so the peek
+        // requires 19 bytes, the length of the shortest message that has one.
+        if constexpr (requires { handler.lookahead(message); }) {
+            const std::size_t next = pos + kLengthPrefixSize + length;
+            if (size - next >= kLengthPrefixSize + kMinLookahead && size > next) {
+                handler.lookahead(begin + next + kLengthPrefixSize);
+            }
+        }
         dispatch(message, handler);
+        // The counterpart of at(): called once the message has been fully handled.
+        if constexpr (requires { handler.after(); }) {
+            handler.after();
+        }
         ++result.messages;
         pos += kLengthPrefixSize + length;
         // Handlers that can finish early (a tool stopping at a time of day) opt in with done().
