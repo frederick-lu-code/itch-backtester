@@ -78,3 +78,52 @@ be read and is the figure quoted as "parse only".
 record boundaries in the reader would mean walking the length prefixes twice. Instead the
 parser reports "truncated" at the end of a buffer and `parse_stream` treats that as "read more"
 unless the file has also ended.
+
+**P8. Handlers can opt in to record offsets and early exit.** `parse()` calls `handler.at(offset)`
+before a message and checks `handler.done()` after it, but only if the handler defines them
+(`requires` expressions), so the benchmark and engine paths pay nothing. Alternative considered:
+a second, slower parse loop for tools. Rejected because two framing loops can drift apart.
+
+## Order book
+
+**K1. One order store for all symbols, one book per possible locate.** Order references are
+unique across symbols, and E, X, D and U messages identify an order by reference alone, so the
+store must be global. Books live in a vector of 65,536 entries indexed by the 16-bit locate:
+no bounds check, no resize, and a few megabytes of memory.
+
+**K2. Both sides share one level container through a priority key.** Bids are keyed by price
+and asks by the bitwise complement of price, so "larger key is better" on both sides and the
+best level is always last. One implementation, one set of tests, no side branches in the
+container. Trade-off: prices must be converted back when levels are reported.
+
+**K3. Feed anomalies are counted, not fatal.** An execution for an unknown order, a re-used
+reference or an over-sized reduction is ignored (or clamped) and counted. A backtest should
+not abort hours into a run, but `book-check` fails if any count is non-zero. On the reference
+day all three counts are zero.
+
+**K4. Level totals are 64-bit.** Order quantities are 32-bit on the wire, but many orders share
+a level and their sum can exceed 32 bits in principle.
+
+**K5. Operations return a change record instead of the book being re-read.** The simulated
+exchange needs the level's quantity before and after, whether the top moved, and the affected
+order's sequence. Returning them from the operation that already has them in hand avoids a
+second lookup per message.
+
+**K6. `book-check` is an extra tool, not in the specification's list.** The invariants on the
+real file need somewhere to run. Folding them into `itch-stats` would have mixed a parser tool
+with a book tool.
+
+**K7. A crossed book is tolerated for 100 ms after a halt release, and only then.** See the
+entry in `DEBUGGING.md`. The specification's invariant ("not crossed during regular hours")
+is violated 642 times on the reference day by the feed's own ordering of messages around
+reopening crosses. The longest such state lasted 1.2 ms; the tolerance is 100 ms and applies
+only while the book has been continuously crossed since the release.
+
+**K8. The differential test compares text dumps from a separate process.** `book-dump --format
+csv` prints every level at checkpoints and the Python reference prints the same rows. No
+Python bindings to maintain, and the comparison exercises the real tool. Trade-off: the CI
+Python job has to build the C++ tools first.
+
+**K9. Published closing prices come from Yahoo Finance's chart API.** It returns split-adjusted
+closes together with the split list, so the adjustment can be undone mechanically and shown.
+The script is local-only; CI never touches the network for data.
