@@ -33,8 +33,10 @@ cmake --build --preset release >/dev/null
 
 COMMIT="$(git rev-parse --short HEAD)"
 OUT="bench/results/$(date +%Y-%m-%d)-$COMMIT"
+# Capture before creating any output, so the results themselves do not make the tree look dirty.
+SYSINFO="$(scripts/sysinfo.sh)"
 mkdir -p "$OUT"
-scripts/sysinfo.sh >"$OUT/sysinfo.json"
+printf '%s\n' "$SYSINFO" >"$OUT/sysinfo.json"
 echo "Results in $OUT"
 
 BIN=build/release/bench
