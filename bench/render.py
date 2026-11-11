@@ -358,9 +358,23 @@ def bench_summary(results: list[dict], latency: list[dict], sysinfo: dict) -> st
             f"BENCHMARKS.md.\n\n" + table(["Benchmark", "Result"], rows))
 
 
+NOT_MEASURED = {
+    "end_to_end": "scripts/run_bench.sh --only e2e",
+    "sharding": "scripts/run_bench.sh --only shards",
+    "micro": "scripts/run_bench.sh --only micro",
+    "dispatch": "scripts/run_bench.sh --only micro",
+    "latency": "scripts/run_bench.sh --only latency",
+    "timing_overhead": "scripts/run_bench.sh --only latency",
+}
+
+
 def replace_block(text: str, name: str, body: str | None) -> str:
     if body is None:
-        return text
+        if name not in NOT_MEASURED:
+            return text
+        body = (f"**Not measured** in the published result set: the machine would not stay "
+                f"awake long enough for a clean run (see `NOTES.md` in the results "
+                f"directories). To measure: `{NOT_MEASURED[name]}`, then `python3 bench/render.py`.")
     pattern = re.compile(
         rf"(<!-- BEGIN GENERATED: {re.escape(name)} -->\n).*?(<!-- END GENERATED: {re.escape(name)} -->)",
         re.S)

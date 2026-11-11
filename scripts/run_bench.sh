@@ -76,6 +76,16 @@ awake() {
         echo "   machine slept during this run (attempt $attempt); repeating" >&2
     done
     echo "error: could not get a run without the machine sleeping: $*" >&2
+    # Do not leave the last, sleep-affected output where it could be published.
+    local previous=""
+    for arg in "$@"; do
+        if [[ "$previous" == "--out" || "$previous" == "--benchmark_out" ]]; then
+            rm -rf "$arg"
+        elif [[ "$arg" == --benchmark_out=* ]]; then
+            rm -f "${arg#--benchmark_out=}"
+        fi
+        previous="$arg"
+    done
     return 1
 }
 
@@ -131,9 +141,12 @@ if wanted e2e; then
     for recorder in async sync none; do
         echo "== end_to_end passive_maker/$recorder"
         for i in $(seq 0 "$RUNS_SLOW"); do # run 0 is the warm-up
+            # Output goes to a file, not a pipe: `| head -1` would close the pipe after one
+            # line and kill a repeated attempt with SIGPIPE.
             awake build/release/apps/backtest --input "$INPUT" \
                 --config configs/passive_maker.toml --out "$SCRATCH/$recorder-$i" \
-                --recorder "$recorder" --skip-input-hash | head -1
+                --recorder "$recorder" --skip-input-hash >"$SCRATCH/log" 2>&1
+            grep -m1 "^strategy" "$SCRATCH/log" || true
         done
         python3 - "$SCRATCH" "$recorder" "$RUNS_SLOW" "$INPUT" >"$OUT/e2e_$recorder.json" <<'PY'
 import json, os, sys
@@ -166,7 +179,8 @@ if wanted shards; then
         for i in $(seq 0 "$RUNS_SLOW"); do # run 0 is the warm-up
             awake build/release/apps/backtest --input "$INPUT" --config configs/noop.toml \
                 --out "$SCRATCH/$shards-$i" --recorder none --skip-input-hash \
-                ${SHARD_ARGS[@]+"${SHARD_ARGS[@]}"} | head -1
+                ${SHARD_ARGS[@]+"${SHARD_ARGS[@]}"} >"$SCRATCH/log" 2>&1
+            grep -m1 "^strategy" "$SCRATCH/log" || true
         done
         python3 - "$SCRATCH" "$shards" "$RUNS_SLOW" "$INPUT" >"$OUT/shards_$shards.json" <<'PY'
 import json, os, sys

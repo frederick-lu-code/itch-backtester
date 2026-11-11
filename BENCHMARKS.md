@@ -41,8 +41,8 @@ never been run on real hardware.
 <!-- BEGIN GENERATED: machine -->
 | Item | Value |
 | --- | --- |
-| Results | `bench/results/2026-11-11-493c268`, `bench/results/2026-11-12-3e01287` |
-| Commit | `3e0128733660` |
+| Results | `bench/results/2026-11-11-493c268`, `bench/results/2026-11-12-3a6dcf0` |
+| Commit | `3a6dcf0a5d14` (dirty tree) |
 | CPU | Apple M5 |
 | Cores | 4 performance + 6 efficiency |
 | Memory | 16 GB |
@@ -51,7 +51,7 @@ never been run on real hardware.
 | CPU governor | not applicable (macOS) |
 | Transparent huge pages | not applicable (macOS) |
 | Power | Now drawing from 'Battery Power', **Low Power Mode on** |
-| Date (UTC) | 2026-11-11T14:39:08Z |
+| Date (UTC) | 2026-11-11T17:31:56Z |
 <!-- END GENERATED: machine -->
 
 ## Results against the specification's aims
@@ -155,21 +155,21 @@ error). Percentiles are reported as bucket upper bounds, so they never understat
 <!-- BEGIN GENERATED: latency -->
 | Variant | Message | Count per run | p50 (ns) | p90 (ns) | p99 (ns) | p99.9 (ns) | max (ms) |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| baseline | all messages | 268,744,780 | 295 | 1055 | 2175 | 3327 | 196471.35 |
-| baseline | A add | 117,145,568 | 251 | 879 | 1471 | 2559 | 154.63 |
-| baseline | C executed with price | 99,917 | 167 | 671 | 1919 | 2879 | 8.03 |
-| baseline | D delete | 114,360,997 | 335 | 1087 | 2175 | 3007 | 196471.35 |
-| baseline | E executed | 5,722,824 | 423 | 1215 | 2431 | 3199 | 24574.92 |
-| baseline | F add (MPID) | 1,485,888 | 251 | 847 | 1439 | 3263 | 46.77 |
+| baseline | all messages | 268,744,780 | 335 | 1151 | 2431 | 4095 | 99.17 |
+| baseline | A add | 117,145,568 | 251 | 879 | 1695 | 4031 | 99.17 |
+| baseline | C executed with price | 99,917 | 167 | 799 | 2239 | 3455 | 0.68 |
+| baseline | D delete | 114,360,997 | 335 | 1215 | 2367 | 3519 | 14.37 |
+| baseline | E executed | 5,722,824 | 503 | 1343 | 2623 | 4095 | 3.91 |
+| baseline | F add (MPID) | 1,485,888 | 295 | 847 | 1567 | 3967 | 50.14 |
 | baseline | H trading action | 8,966 | 0 | 42 | 42 | 42 | 0.00 |
-| baseline | I NOII | 4,024,315 | 41 | 42 | 42 | 42 | 0.02 |
-| baseline | L participant position | 215,161 | 41 | 42 | 42 | 42 | 0.01 |
-| baseline | P trade | 1,218,602 | 42 | 42 | 42 | 59 | 0.02 |
-| baseline | Q cross | 17,836 | 42 | 42 | 42 | 85 | 0.00 |
-| baseline | R directory | 8,906 | 41 | 42 | 42 | 42 | 0.01 |
-| baseline | U replace | 21,639,067 | 719 | 1919 | 3071 | 4351 | 27557.80 |
-| baseline | X cancel | 2,787,676 | 167 | 591 | 1471 | 2687 | 4.33 |
-| baseline | Y Reg SHO | 9,013 | 0 | 42 | 42 | 42 | 0.01 |
+| baseline | I NOII | 4,024,315 | 0 | 42 | 42 | 42 | 0.02 |
+| baseline | L participant position | 215,161 | 0 | 42 | 42 | 42 | 0.01 |
+| baseline | P trade | 1,218,602 | 41 | 42 | 42 | 42 | 0.05 |
+| baseline | Q cross | 17,836 | 41 | 42 | 42 | 58 | 0.00 |
+| baseline | R directory | 8,906 | 0 | 42 | 42 | 42 | 0.00 |
+| baseline | U replace | 21,639,067 | 799 | 2175 | 3263 | 6783 | 12.09 |
+| baseline | X cancel | 2,787,676 | 167 | 671 | 1759 | 2879 | 0.75 |
+| baseline | Y Reg SHO | 9,013 | 0 | 42 | 42 | 42 | 0.00 |
 | optimised/reserve | all messages | 268,744,780 | 295 | 463 | 1007 | 2559 | 50.92 |
 | optimised/reserve | A add | 117,145,568 | 295 | 375 | 719 | 2431 | 17.39 |
 | optimised/reserve | C executed with price | 99,917 | 83 | 335 | 719 | 1727 | 0.60 |
@@ -197,7 +197,7 @@ Timing has a cost of its own, which is why throughput is always quoted from the 
 <!-- BEGIN GENERATED: timing_overhead -->
 | Variant | Untimed (M msg/s) | Timed (M msg/s) | Timing overhead per message (ns) | Counter tick (ns) |
 | --- | --- | --- | --- | --- |
-| baseline | 2.15 | 0.72 | 918 | 1.000 |
+| baseline | 2.15 | 1.80 | 90 | 1.000 |
 | optimised/reserve | 5.76 | 3.16 | 143 | 1.000 |
 <!-- END GENERATED: timing_overhead -->
 
@@ -208,11 +208,7 @@ for all 8,906 symbols, 100 microseconds of order latency, the full risk configur
 whole reference day. The three rows differ only in recording.
 
 <!-- BEGIN GENERATED: end_to_end -->
-| Variant | Wall seconds, median (min to max) | Million messages/s, median (min to max) | Records written | Slowdown versus no recording | Records that waited on a full ring (median) | Time waited, ms (median) | Runs |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| passive_maker/async | 123.05 (42.29 to 230.35) | 2.18 (1.17 to 6.35) | 4,392,178 | -22.7% | 0 | 0.00 | 5 |
-| passive_maker/none | 159.21 (40.70 to 362.72) | 1.69 (0.74 to 6.60) | 367 | +0.0% | 0 | 0.00 | 5 |
-| passive_maker/sync | 325.32 (45.52 to 1023.37) | 0.83 (0.26 to 5.90) | 4,392,178 | +104.3% | 0 | 0.00 | 5 |
+**Not measured** in the published result set: the machine would not stay awake long enough for a clean run (see `NOTES.md` in the results directories). To measure: `scripts/run_bench.sh --only e2e`, then `python3 bench/render.py`.
 <!-- END GENERATED: end_to_end -->
 
 With `build_all_books = false` the same run produces byte-identical output several times
@@ -228,34 +224,34 @@ keys live.
 <!-- BEGIN GENERATED: micro -->
 | Benchmark | ns per item | Million items/s | Notes |
 | --- | --- | --- | --- |
-| `BM_OrderMapReplay<StdOrderMap>/0` | 42.3 | 23.6 | real trace, not pre-sized |
-| `BM_OrderMapReplay<StdOrderMap>/2097152` | 31.7 | 31.6 | real trace, pre-sized |
-| `BM_OrderMapReplay<FlatOrderMap>/0` | 23.9 | 41.8 | real trace, not pre-sized |
-| `BM_OrderMapReplay<FlatOrderMap>/2097152` | 12.5 | 80.1 | real trace, pre-sized |
-| `BM_LevelUpdate<MapLevels>/16` | 8.0 | 124.9 |  |
-| `BM_LevelUpdate<MapLevels>/256` | 14.4 | 69.4 |  |
-| `BM_LevelUpdate<MapLevels>/4096` | 20.7 | 48.2 |  |
-| `BM_LevelUpdate<BinaryVectorLevels>/16` | 6.1 | 163.3 |  |
-| `BM_LevelUpdate<BinaryVectorLevels>/256` | 11.1 | 90.3 |  |
-| `BM_LevelUpdate<BinaryVectorLevels>/4096` | 22.1 | 45.2 |  |
-| `BM_LevelUpdate<VectorLevels>/16` | 2.9 | 342.8 |  |
-| `BM_LevelUpdate<VectorLevels>/256` | 2.9 | 340.4 |  |
-| `BM_LevelUpdate<VectorLevels>/4096` | 2.9 | 342.3 |  |
-| `BM_LevelCreateDestroyAtTop<MapLevels>/256` | 21.0 | 47.7 |  |
-| `BM_LevelCreateDestroyAtTop<MapLevels>/4096` | 38.3 | 26.1 |  |
-| `BM_LevelCreateDestroyAtTop<VectorLevels>/256` | 5.3 | 188.7 |  |
-| `BM_LevelCreateDestroyAtTop<VectorLevels>/4096` | 5.3 | 188.2 |  |
-| `BM_SpscTransfer/1024` | 32.1 | 31.2 |  |
-| `BM_SpscTransfer/65536` | 120.3 | 8.3 |  |
-| `BM_EngineDispatchConcept` | 44.1 | 22.7 | 400,010 messages, 134,138 callbacks per run |
-| `BM_EngineDispatchVirtual` | 48.1 | 20.8 | 400,010 messages, 134,138 callbacks per run |
+| `BM_OrderMapReplay<StdOrderMap>/0` | 46.5 | 21.5 | real trace, not pre-sized |
+| `BM_OrderMapReplay<StdOrderMap>/2097152` | 33.0 | 30.3 | real trace, pre-sized |
+| `BM_OrderMapReplay<FlatOrderMap>/0` | 24.6 | 40.7 | real trace, not pre-sized |
+| `BM_OrderMapReplay<FlatOrderMap>/2097152` | 12.4 | 80.6 | real trace, pre-sized |
+| `BM_LevelUpdate<MapLevels>/16` | 7.4 | 134.6 |  |
+| `BM_LevelUpdate<MapLevels>/256` | 14.2 | 70.4 |  |
+| `BM_LevelUpdate<MapLevels>/4096` | 20.1 | 49.8 |  |
+| `BM_LevelUpdate<BinaryVectorLevels>/16` | 6.9 | 145.6 |  |
+| `BM_LevelUpdate<BinaryVectorLevels>/256` | 11.5 | 87.1 |  |
+| `BM_LevelUpdate<BinaryVectorLevels>/4096` | 22.5 | 44.5 |  |
+| `BM_LevelUpdate<VectorLevels>/16` | 2.9 | 343.4 |  |
+| `BM_LevelUpdate<VectorLevels>/256` | 2.9 | 343.5 |  |
+| `BM_LevelUpdate<VectorLevels>/4096` | 2.9 | 343.9 |  |
+| `BM_LevelCreateDestroyAtTop<MapLevels>/256` | 29.0 | 34.5 |  |
+| `BM_LevelCreateDestroyAtTop<MapLevels>/4096` | 37.5 | 26.7 |  |
+| `BM_LevelCreateDestroyAtTop<VectorLevels>/256` | 5.3 | 189.5 |  |
+| `BM_LevelCreateDestroyAtTop<VectorLevels>/4096` | 5.3 | 188.9 |  |
+| `BM_SpscTransfer/1024` | 140421.0 | 0.0 |  |
+| `BM_SpscTransfer/65536` | 112.4 | 8.9 |  |
+| `BM_EngineDispatchConcept` | 43.6 | 22.9 | 400,010 messages, 134,138 callbacks per run |
+| `BM_EngineDispatchVirtual` | 48.0 | 20.8 | 400,010 messages, 134,138 callbacks per run |
 <!-- END GENERATED: micro -->
 
 Dispatch: the two `BM_EngineDispatch` rows replay the same synthetic stream through the whole
 engine, once with the strategy bound through the concept and once through the virtual adapter.
 
 <!-- BEGIN GENERATED: dispatch -->
-Per replay of the same stream the virtual adapter took +1.62 ms relative to the concept-bound strategy, which is +12.1 ns per callback over 134,138 callbacks.
+Per replay of the same stream the virtual adapter took +1.77 ms relative to the concept-bound strategy, which is +13.2 ns per callback over 134,138 callbacks.
 <!-- END GENERATED: dispatch -->
 
 ## Optimisation log
@@ -273,6 +269,7 @@ ratio, so a change that did not help says so.
 | Find levels by scanning back from the best instead of binary search | Most book activity is within a few levels of the touch. A linear scan from the best level usually ends in one or two predictable steps, where a binary search over thousands of levels takes a dozen unpredictable ones. | 4.74 to 5.76 M msg/s (1.22x). p99 after: 1007 ns. | Kept. |
 | Prefetch the order-store slot for the next message's reference | With allocation and tree walks gone, what remains is the cache miss on the order slot itself: the table is 128 MB and references arrive in no useful order. The parser can see the next message's reference one message early, long enough for the slot to arrive. | 5.76 to 6.48 M msg/s (1.12x). | Kept, and adopted by the engine through the parser's `lookahead` hook. |
 | Read the file with `read()` instead of mapping it (experiment, parse only) | The parse-only benchmark showed `mmap` slower than `read()`. The mapping takes a page fault for every 16 KiB of an 8 GiB file on every run, where `read()` copies into one buffer that stays in cache. | 28.96 to 43.80 M msg/s (1.51x). | Not adopted, although it is faster in isolation: once the book is being built the parse is a small share of the run, and `mmap` is what lets the engine, the directory pre-scan and the input hash share one zero-copy view of the file. The `read()` path stays as the benchmark baseline. |
+| Dispatch strategy callbacks through a virtual adapter (experiment) | Binding the strategy at compile time lets its callbacks inline into the event loop. A virtual call per callback should cost a few nanoseconds each. | 17.44 to 19.21 ms per replay (0.91x). Per replay of the same stream the virtual adapter took +1.77 ms relative to the concept-bound strategy, which is +13.2 ns per callback over 134,138 callbacks. | Not adopted as the default: the adapter is the slower path, as expected. It stays available for strategies chosen at run time. |
 <!-- END GENERATED: optimisation_log -->
 
 What is missing from this log is the evidence that would normally prompt each step: a flame
@@ -283,5 +280,5 @@ before-and-after measurement alone.
 ## Sharding
 
 <!-- BEGIN GENERATED: sharding -->
-Not yet measured.
+**Not measured** in the published result set: the machine would not stay awake long enough for a clean run (see `NOTES.md` in the results directories). To measure: `scripts/run_bench.sh --only shards`, then `python3 bench/render.py`.
 <!-- END GENERATED: sharding -->
