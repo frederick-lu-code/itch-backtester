@@ -33,3 +33,11 @@ endif()
 
 # Header-only; used by the config loader.
 FetchContent_MakeAvailable(tomlplusplus)
+
+if(ITCHBT_BUILD_BENCH)
+    set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "" FORCE)
+    set(BENCHMARK_ENABLE_GTEST_TESTS OFF CACHE BOOL "" FORCE)
+    set(BENCHMARK_ENABLE_WERROR OFF CACHE BOOL "" FORCE)
+    set(BENCHMARK_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
+    FetchContent_MakeAvailable(benchmark)
+endif()

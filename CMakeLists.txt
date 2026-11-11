@@ -74,11 +74,13 @@ if(NOT ITCHBT_GIT_COMMIT)
 endif()
 
 add_subdirectory(apps)
-if(ITCHBT_BUILD_BENCH)
-    add_subdirectory(bench)
-endif()
 
 if(ITCHBT_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
+endif()
+
+# After tests: micro_bench links the test support library.
+if(ITCHBT_BUILD_BENCH)
+    add_subdirectory(bench)
 endif()

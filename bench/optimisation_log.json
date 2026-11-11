@@ -1,0 +1,72 @@
+[
+  {
+    "change": "Size the baseline order map up front (`reserve`)",
+    "hypothesis": "`std::unordered_map` rehashes about twenty times on its way to 1.9 million live orders, each time re-linking every node. Reserving the bucket array once should remove that.",
+    "benchmark": "book_build",
+    "before": "baseline",
+    "after": "baseline/reserve",
+    "verdict_faster": "Kept as the fair baseline for the rows below.",
+    "verdict_same": "No gain: rehashing is not where the baseline spends its time. Later rows still compare against the pre-sized variant so that pre-sizing is not credited to the flat map.",
+    "verdict_slower": "Reverted in effect: pre-sizing made the baseline slower here. Later rows still compare against the pre-sized variant, which is the like-for-like comparison for the flat map."
+  },
+  {
+    "change": "Replace `std::unordered_map` with an open-addressing flat hash map for orders",
+    "hypothesis": "Every order lookup in the baseline is a pointer chase to a separately allocated node, and every add and delete is a malloc or free. One flat array of 32-byte slots with linear probing removes the allocation and at least one cache miss per message.",
+    "benchmark": "book_build",
+    "before": "baseline/reserve",
+    "after": "flat_orders/reserve",
+    "verdict_faster": "Kept.",
+    "verdict_same": "Reverted: no gain.",
+    "verdict_slower": "Reverted: slower."
+  },
+  {
+    "change": "Replace `std::map` price levels with a sorted vector, binary search",
+    "hypothesis": "A red-black tree spreads a side's levels across the heap. A contiguous sorted array keeps the levels near the touch together, and inserting or erasing near the best moves only a few 16-byte entries.",
+    "benchmark": "book_build",
+    "before": "flat_orders/reserve",
+    "after": "binary_levels/reserve",
+    "verdict_faster": "Kept.",
+    "verdict_same": "Reverted: no gain.",
+    "verdict_slower": "Reverted: slower."
+  },
+  {
+    "change": "Find levels by scanning back from the best instead of binary search",
+    "hypothesis": "Most book activity is within a few levels of the touch. A linear scan from the best level usually ends in one or two predictable steps, where a binary search over thousands of levels takes a dozen unpredictable ones.",
+    "benchmark": "book_build",
+    "before": "binary_levels/reserve",
+    "after": "optimised/reserve",
+    "verdict_faster": "Kept.",
+    "verdict_same": "Reverted: binary search stays.",
+    "verdict_slower": "Reverted: binary search stays."
+  },
+  {
+    "change": "Prefetch the order-store slot for the next message's reference",
+    "hypothesis": "With allocation and tree walks gone, what remains is the cache miss on the order slot itself: the table is 128 MB and references arrive in no useful order. The parser can see the next message's reference one message early, long enough for the slot to arrive.",
+    "benchmark": "book_build",
+    "before": "optimised/reserve",
+    "after": "optimised/reserve/prefetch",
+    "verdict_faster": "Kept, and adopted by the engine through the parser's `lookahead` hook.",
+    "verdict_same": "Reverted: the hook stays available but the engine does not use it.",
+    "verdict_slower": "Reverted: slower."
+  },
+  {
+    "change": "Read the file with `read()` instead of mapping it (experiment, parse only)",
+    "hypothesis": "The parse-only benchmark showed `mmap` slower than `read()`. The mapping takes a page fault for every 16 KiB of an 8 GiB file on every run, where `read()` copies into one buffer that stays in cache.",
+    "benchmark": "parse_only",
+    "before": "mmap/decode",
+    "after": "read/decode",
+    "verdict_faster": "Not adopted, although it is faster in isolation: once the book is being built the parse is a small share of the run, and `mmap` is what lets the engine, the directory pre-scan and the input hash share one zero-copy view of the file. The `read()` path stays as the benchmark baseline.",
+    "verdict_same": "Not adopted: no faster than `mmap`.",
+    "verdict_slower": "Not adopted: `mmap` is faster."
+  },
+  {
+    "change": "Dispatch strategy callbacks through a virtual adapter (experiment)",
+    "hypothesis": "Binding the strategy at compile time lets its callbacks inline into the event loop. A virtual call per callback should cost a few nanoseconds each.",
+    "benchmark": "micro",
+    "before": "BM_EngineDispatchConcept",
+    "after": "BM_EngineDispatchVirtual",
+    "verdict_faster": "Surprising: the adapter measured faster, which says the difference is inside the noise. The concept binding stays the default.",
+    "verdict_same": "No measurable cost. The concept binding stays the default because it is never slower; the adapter is available for strategies chosen at run time.",
+    "verdict_slower": "Not adopted as the default: the adapter is the slower path, as expected. It stays available for strategies chosen at run time."
+  }
+]

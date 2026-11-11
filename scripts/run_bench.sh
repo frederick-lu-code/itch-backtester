@@ -1,22 +1,26 @@
 #!/usr/bin/env bash
 # Runs the benchmark suite and writes raw results to bench/results/<date>-<commit>/.
 #
-#   scripts/run_bench.sh [--input data/<file>] [--runs 10] [--cpu N] [--only parse|book|...]
+#   scripts/run_bench.sh [--input data/<file>] [--runs 10] [--runs-slow 5] [--cpu N]
+#                        [--only parse|book|latency|e2e|micro]
 #
 # Method (see BENCHMARKS.md): release preset, one discarded warm-up run then N measured runs
-# per benchmark. Run on an otherwise idle machine, on mains power. Never run in CI.
+# per benchmark. The two baseline-book variants take minutes per run and use --runs-slow.
+# Run on an otherwise idle machine, on mains power. Never run in CI.
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 INPUT="data/12302019.NASDAQ_ITCH50"
 RUNS=10
+RUNS_SLOW=5
 CPU_ARGS=()
 ONLY=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
     --input) INPUT="$2"; shift 2 ;;
     --runs) RUNS="$2"; shift 2 ;;
+    --runs-slow) RUNS_SLOW="$2"; shift 2 ;;
     --cpu) CPU_ARGS=(--cpu "$2"); shift 2 ;;
     --only) ONLY="$2"; shift 2 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
@@ -28,8 +32,18 @@ if [[ ! -f "$INPUT" ]]; then
     exit 1
 fi
 
+# On a laptop, keep the machine and display awake for the duration: a sleep in the middle of
+# a run shows up as a multi-second "latency".
+if [[ "$(uname -s)" == "Darwin" && -z "${ITCHBT_CAFFEINATED:-}" ]]; then
+    ARGS=(--input "$INPUT" --runs "$RUNS" --runs-slow "$RUNS_SLOW")
+    [[ -n "$ONLY" ]] && ARGS+=(--only "$ONLY")
+    ITCHBT_CAFFEINATED=1 exec caffeinate -d -i -m "$0" "${ARGS[@]}" ${CPU_ARGS[@]+"${CPU_ARGS[@]}"}
+fi
+
 cmake --preset release >/dev/null
 cmake --build --preset release >/dev/null
+cmake --preset timing >/dev/null
+cmake --build --preset timing >/dev/null
 
 COMMIT="$(git rev-parse --short HEAD)"
 OUT="bench/results/$(date +%Y-%m-%d)-$COMMIT"
@@ -40,6 +54,7 @@ printf '%s\n' "$SYSINFO" >"$OUT/sysinfo.json"
 echo "Results in $OUT"
 
 BIN=build/release/bench
+CPU=(${CPU_ARGS[@]+"${CPU_ARGS[@]}"})
 wanted() { [[ -z "$ONLY" || "$ONLY" == "$1" ]]; }
 
 if wanted parse; then
@@ -47,16 +62,78 @@ if wanted parse; then
         for handler in decode frame; do
             echo "== parse_only $reader/$handler"
             "$BIN/parse_bench" --input "$INPUT" --reader "$reader" --handler "$handler" \
-                --runs "$RUNS" ${CPU_ARGS[@]+"${CPU_ARGS[@]}"} \
-                --out "$OUT/parse_${reader}_${handler}.json"
+                --runs "$RUNS" ${CPU[@]+"${CPU[@]}"} --out "$OUT/parse_${reader}_${handler}.json"
         done
     done
 fi
 
+# The order store is sized for the reference day's peak of 1.92 million live orders.
+RESERVE=2097152
+
+book() { # name, binary, book, runs, extra args...
+    local name="$1" binary="$2" book="$3" runs="$4"
+    shift 4
+    echo "== book_build $name"
+    "$binary" --input "$INPUT" --book "$book" --runs "$runs" "$@" ${CPU[@]+"${CPU[@]}"} \
+        --out "$OUT/book_$name.json"
+}
+
 if wanted book; then
-    echo "== book_build baseline"
-    "$BIN/book_bench" --input "$INPUT" --book baseline --runs "$RUNS" \
-        ${CPU_ARGS[@]+"${CPU_ARGS[@]}"} --out "$OUT/book_baseline.json"
+    book baseline "$BIN/book_bench" baseline "$RUNS_SLOW"
+    book baseline_reserve "$BIN/book_bench" baseline "$RUNS_SLOW" --reserve "$RESERVE"
+    book flat_orders "$BIN/book_bench" flat_orders "$RUNS" --reserve "$RESERVE"
+    book binary_levels "$BIN/book_bench" binary_levels "$RUNS" --reserve "$RESERVE"
+    book optimised "$BIN/book_bench" optimised "$RUNS" --reserve "$RESERVE"
+    book optimised_prefetch "$BIN/book_bench_prefetch" optimised "$RUNS" --reserve "$RESERVE"
+fi
+
+if wanted latency; then
+    TBIN=build/timing/bench
+    echo "== book_latency baseline"
+    "$TBIN/book_bench" --input "$INPUT" --book baseline --runs 2 ${CPU[@]+"${CPU[@]}"} \
+        --out "$OUT/latency_baseline.json"
+    echo "== book_latency optimised"
+    "$TBIN/book_bench" --input "$INPUT" --book optimised --reserve "$RESERVE" --runs 3 \
+        ${CPU[@]+"${CPU[@]}"} --out "$OUT/latency_optimised.json"
+    echo "== book_latency optimised/prefetch"
+    "$TBIN/book_bench_prefetch" --input "$INPUT" --book optimised --reserve "$RESERVE" --runs 3 \
+        ${CPU[@]+"${CPU[@]}"} --out "$OUT/latency_optimised_prefetch.json"
+fi
+
+if wanted e2e; then
+    SCRATCH="$(mktemp -d)"
+    for recorder in async sync none; do
+        echo "== end_to_end passive_maker/$recorder"
+        for i in $(seq 0 "$RUNS_SLOW"); do # run 0 is the warm-up
+            build/release/apps/backtest --input "$INPUT" --config configs/passive_maker.toml \
+                --out "$SCRATCH/$recorder-$i" --recorder "$recorder" --skip-input-hash | head -1
+        done
+        python3 - "$SCRATCH" "$recorder" "$RUNS_SLOW" "$INPUT" >"$OUT/e2e_$recorder.json" <<'PY'
+import json, os, sys
+scratch, recorder, runs, path = sys.argv[1], sys.argv[2], int(sys.argv[3]), sys.argv[4]
+metas = [json.load(open(f"{scratch}/{recorder}-{i}/run.json")) for i in range(1, runs + 1)]
+first = metas[0]
+print(json.dumps({
+    "benchmark": "end_to_end",
+    "variant": f"passive_maker/{recorder}",
+    "messages": first["stats"]["messages"],
+    "bytes": os.path.getsize(path),
+    "orders_submitted": first["stats"]["orders_submitted"],
+    "fills": first["stats"]["fills"],
+    "records": sum(first["records"].values()),
+    "recorder_blocked_records": [m["timing"]["recorder_blocked_records"] for m in metas],
+    "recorder_blocked_ms": [m["timing"]["recorder_blocked_ns"] / 1e6 for m in metas],
+    "run_seconds": [m["timing"]["wall_time_s"] for m in metas],
+}, indent=2))
+PY
+    done
+    rm -rf "$SCRATCH"
+fi
+
+if wanted micro; then
+    echo "== micro"
+    ITCHBT_DATA="$INPUT" "$BIN/micro_bench" --benchmark_min_time=1s \
+        --benchmark_out="$OUT/micro.json" --benchmark_out_format=json
 fi
 
 echo "Done. Regenerate the tables with: python3 bench/render.py"
