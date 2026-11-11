@@ -1,0 +1,92 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# CI never downloads Nasdaq data and never runs performance benchmarks: tests use synthetic
+# fixtures, and shared runners give meaningless timings.
+
+jobs:
+  build-test:
+    name: ${{ matrix.preset }} / ${{ matrix.cxx }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        cxx: [g++-13, clang++-18]
+        preset: [debug, release, asan, tsan]
+    env:
+      CXX: ${{ matrix.cxx }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install tools
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+      - name: Lower ASLR entropy for sanitizers
+        # Ubuntu 24.04 runners default to 32 bits of mmap randomisation, which the TSan and
+        # ASan runtimes in GCC 13 and Clang 18 cannot map their shadow memory around.
+        run: sudo sysctl vm.mmap_rnd_bits=28
+      - name: Configure
+        run: cmake --preset ${{ matrix.preset }}
+      - name: Build
+        run: cmake --build --preset ${{ matrix.preset }}
+      - name: Test
+        run: ctest --preset ${{ matrix.preset }}
+
+  fuzz:
+    name: fuzz (60 s)
+    runs-on: ubuntu-24.04
+    env:
+      CXX: clang++-18
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install tools
+        run: sudo apt-get update && sudo apt-get install -y ninja-build libclang-rt-18-dev
+      - name: Lower ASLR entropy for sanitizers
+        run: sudo sysctl vm.mmap_rnd_bits=28
+      - name: Configure
+        run: cmake --preset fuzz
+      - name: Build
+        run: cmake --build --preset fuzz
+      - name: Run parser fuzzer
+        run: ./build/fuzz/tests/fuzz/parser_fuzz -max_total_time=60 -print_final_stats=1
+
+  lint:
+    name: clang-format and clang-tidy
+    runs-on: ubuntu-24.04
+    env:
+      CXX: clang++-18
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install tools
+        run: |
+          sudo apt-get update && sudo apt-get install -y ninja-build clang-tidy-18
+          pipx install clang-format==18.1.8
+      - name: Check formatting
+        run: scripts/format.sh --check
+      - name: Configure
+        run: cmake --preset debug
+      - name: clang-tidy
+        run: |
+          git ls-files -z -- '*.cpp' |
+            xargs -0 run-clang-tidy-18 -quiet -p build/debug
+
+  python:
+    name: python analysis
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: analysis/requirements.txt
+      - name: Install dependencies
+        run: pip install -r analysis/requirements.txt
+      - name: Test
+        run: pytest analysis
