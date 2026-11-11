@@ -5,15 +5,14 @@ TotalView-ITCH 5.0 data, rebuilds the limit order book, runs a strategy against 
 order entry and fills, enforces risk controls, and writes a dataset for post-trade analysis in
 Python.
 
-**Status: M0 (scaffold) complete.** The build, test, sanitizer, lint and CI plumbing exist, along
-with the synthetic ITCH fixture writer that later tests are built on. There is no parser, book
-or engine yet, so there is no headline throughput or latency figure. One will appear here only
-once it has been measured.
+**Status: M1 (parser) complete.** The reader and parser handle a full day of real data and
+`itch-stats` summarises a file. There is no order book or engine yet. Measured results so far
+are in [BENCHMARKS.md](BENCHMARKS.md).
 
 | Milestone | Deliverable | Status |
 | --- | --- | --- |
 | M0 Scaffold | CMake presets, CI, formatting, sanitizer builds, `itch_writer` fixture | Done |
-| M1 Parser | Reader, parser, `itch-stats`, parser fuzz target | Not started |
+| M1 Parser | Reader, parser, `itch-stats`, parser fuzz target | Done |
 | M2 Order book | Baseline book, `book-dump`, invariants, reference book, reconciliation | Not started |
 | M3 Backtester | Strategy API, simulated exchange, order state machine, latency queue | Not started |
 | M4 Risk | Pre-trade checks, position and PnL tracking, kill switch | Not started |

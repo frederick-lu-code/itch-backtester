@@ -1,0 +1,11 @@
+{
+  "benchmark": "parse_only",
+  "variant": "read/frame",
+  "messages": 268744780,
+  "bytes": 8251407909,
+  "input": "data/12302019.NASDAQ_ITCH50",
+  "thread_placement": "not pinned (macOS has no affinity API); QoS user-interactive, performance cores",
+  "checksum_low32": 0,
+  "peak_rss_bytes": 2424832,
+  "run_seconds": [1.557721, 1.487786, 1.510921, 1.602394, 1.622786, 1.658069, 1.495795, 1.468645, 1.438300, 1.478144]
+}

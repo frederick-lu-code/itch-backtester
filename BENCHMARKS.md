@@ -29,6 +29,19 @@ been run on real hardware. Treat ratios between variants on this machine as the 
 ## Machine
 
 <!-- BEGIN GENERATED: machine -->
+| Item | Value |
+| --- | --- |
+| Results directory | `bench/results/2026-11-11-ca0431b` |
+| Commit | `ca0431b21e9a` |
+| CPU | Apple M5 |
+| Cores | 4 performance + 6 efficiency |
+| Memory | 16 GB |
+| OS | Darwin 26.6 (arm64) |
+| Compiler | Apple clang version 21.0.0 (clang-2100.1.1.101) |
+| CPU governor | not applicable (macOS) |
+| Transparent huge pages | not applicable (macOS) |
+| Power | Now drawing from 'AC Power' |
+| Date (UTC) | 2026-11-11T04:53:50Z |
 <!-- END GENERATED: machine -->
 
 ## Parse only
@@ -39,6 +52,12 @@ validation and dispatch remain. `mmap` includes mapping the file and its page fa
 timed region; `read` uses `read()` into a 1 MiB buffer. The page cache is warm in all runs.
 
 <!-- BEGIN GENERATED: parse_only -->
+| Variant | Messages | Million messages/s, median (min to max) | GB/s, median (min to max) | Seconds, median (min to max) | Runs |
+| --- | --- | --- | --- | --- | --- |
+| mmap/decode | 268,744,780 | 52.9 (51.2 to 55.9) | 1.6 (1.6 to 1.7) | 5.08 (4.81 to 5.25) | 10 |
+| mmap/frame | 268,744,780 | 75.6 (65.5 to 79.1) | 2.3 (2.0 to 2.4) | 3.56 (3.40 to 4.11) | 10 |
+| read/decode | 268,744,780 | 90.1 (85.0 to 91.6) | 2.8 (2.6 to 2.8) | 2.98 (2.93 to 3.16) | 10 |
+| read/frame | 268,744,780 | 178.8 (162.1 to 186.8) | 5.5 (5.0 to 5.7) | 1.50 (1.44 to 1.66) | 10 |
 <!-- END GENERATED: parse_only -->
 
 ## Optimisation log
