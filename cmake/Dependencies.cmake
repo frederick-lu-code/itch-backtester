@@ -9,8 +9,8 @@ FetchContent_Declare(
     GIT_SHALLOW TRUE
     SYSTEM)
 
-# Declared now so the pins live in one place; fetched from the milestone that first uses them
-# (Google Benchmark in M1, toml++ in M3).
+# Google Benchmark is declared here so the pins live in one place; it is fetched only when
+# benchmarks are built.
 FetchContent_Declare(
     benchmark
     GIT_REPOSITORY https://github.com/google/benchmark.git
@@ -30,3 +30,6 @@ if(ITCHBT_BUILD_TESTS)
     set(BUILD_GMOCK ON CACHE BOOL "" FORCE)
     FetchContent_MakeAvailable(googletest)
 endif()
+
+# Header-only; used by the config loader.
+FetchContent_MakeAvailable(tomlplusplus)
