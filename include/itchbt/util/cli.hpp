@@ -4,6 +4,8 @@
 
 #include <charconv>
 #include <cstdint>
+#include <cstdio>
+#include <exception>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -73,6 +75,20 @@ private:
     std::vector<std::string> args_;
     std::vector<bool> used_;
 };
+
+/// Runs a tool's body and turns an escaping exception (in practice only std::bad_alloc or a
+/// filesystem error during start-up) into a message and a non-zero exit code.
+template <typename Body>
+int run_tool(const char* name, Body&& body) noexcept {
+    try {
+        return body();
+    } catch (const std::exception& e) {
+        std::fprintf(stderr, "%s: %s\n", name, e.what());
+    } catch (...) {
+        std::fprintf(stderr, "%s: unknown error\n", name);
+    }
+    return 1;
+}
 
 /// Splits "A,B,C" into its non-empty parts.
 [[nodiscard]] inline std::vector<std::string> split_commas(std::string_view text) {

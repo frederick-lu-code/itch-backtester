@@ -80,7 +80,9 @@ int usage() {
 
 } // namespace
 
-int main(int argc, char** argv) {
+namespace {
+
+int run(int argc, char** argv) {
     Args args(argc, argv);
     const auto input = args.value("--input");
     bool bad_number = false;
@@ -145,4 +147,10 @@ int main(int argc, char** argv) {
         return 1;
     }
     return 0;
+}
+
+} // namespace
+
+int main(int argc, char** argv) {
+    return itchbt::run_tool("itch-stats", [&] { return run(argc, argv); });
 }

@@ -95,7 +95,7 @@ parse_stream(BufferedFile& file, Handler& handler,
             break;
         }
         const std::uint64_t base = file.offset();
-        ParseResult r = parse(data, handler, max_messages - total.messages);
+        const ParseResult r = parse(data, handler, max_messages - total.messages);
         total.messages += r.messages;
         // A record cut off by the end of the buffer is not an error unless the file ends too:
         // keep the partial record and read more.

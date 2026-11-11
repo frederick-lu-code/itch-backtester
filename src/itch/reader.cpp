@@ -14,7 +14,9 @@ namespace itchbt::itch {
 namespace {
 
 std::string describe(const char* what, const std::filesystem::path& path) {
-    return std::string(what) + " " + path.string() + ": " + std::strerror(errno);
+    // std::strerror is not thread safe; the error category's message() is.
+    return std::string(what) + " " + path.string() + ": " +
+           std::error_code(errno, std::generic_category()).message();
 }
 
 /// Closes a file descriptor on scope exit unless released.

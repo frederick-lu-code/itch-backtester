@@ -1,0 +1,7 @@
+# Tests inherit the project checks, minus two that fight GoogleTest:
+# - unchecked-optional-access does not understand that ASSERT_TRUE(opt) guards what follows.
+# - cert-err58-cpp fires on the static registration objects behind TEST().
+InheritParentConfig: true
+Checks: >
+  -bugprone-unchecked-optional-access,
+  -cert-err58-cpp

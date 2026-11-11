@@ -24,7 +24,7 @@ ItchWriter sample_stream(std::size_t orders) {
     ItchWriter w;
     w.system_event(1, 'O').stock_directory(2, 1, "AAPL");
     for (std::size_t i = 0; i < orders; ++i) {
-        const auto ref = static_cast<OrderRef>(i + 1);
+        const OrderRef ref = OrderRef{i} + 1;
         const Timestamp ts = 100 + i;
         w.add(ts, 1, ref, i % 2 == 0 ? Side::Buy : Side::Sell, 100, "AAPL",
               static_cast<Price>(1'000'000 + i));

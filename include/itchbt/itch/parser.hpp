@@ -283,7 +283,7 @@ parse(std::span<const std::byte> data, Handler& handler,
             result.error = ParseError::Truncated;
             break;
         }
-        const std::uint16_t length = load_be<std::uint16_t>(begin + pos);
+        const auto length = load_be<std::uint16_t>(begin + pos);
         if (size - pos - kLengthPrefixSize < length) {
             result.error = ParseError::Truncated;
             result.length = length;
@@ -300,6 +300,10 @@ parse(std::span<const std::byte> data, Handler& handler,
             result.length = length;
             break;
         }
+        // Handlers that want to report where a message came from can opt in to its offset.
+        if constexpr (requires { handler.at(std::uint64_t{}); }) {
+            handler.at(pos);
+        }
         dispatch(message, handler);
         ++result.messages;
         pos += kLengthPrefixSize + length;
@@ -311,19 +315,19 @@ parse(std::span<const std::byte> data, Handler& handler,
 /// A handler that ignores everything. Derive from it and add `using NullHandler::on;` to
 /// override only the messages of interest.
 struct NullHandler {
-    void on(const SystemEvent&) noexcept {}
-    void on(const StockDirectory&) noexcept {}
-    void on(const TradingAction&) noexcept {}
-    void on(const AddOrder&) noexcept {}
-    void on(const OrderExecuted&) noexcept {}
-    void on(const OrderExecutedWithPrice&) noexcept {}
-    void on(const OrderCancel&) noexcept {}
-    void on(const OrderDelete&) noexcept {}
-    void on(const OrderReplace&) noexcept {}
-    void on(const Trade&) noexcept {}
-    void on(const CrossTrade&) noexcept {}
-    void on(const BrokenTrade&) noexcept {}
-    void on_skipped(const Header&) noexcept {}
+    void on(const SystemEvent& /*message*/) noexcept {}
+    void on(const StockDirectory& /*message*/) noexcept {}
+    void on(const TradingAction& /*message*/) noexcept {}
+    void on(const AddOrder& /*message*/) noexcept {}
+    void on(const OrderExecuted& /*message*/) noexcept {}
+    void on(const OrderExecutedWithPrice& /*message*/) noexcept {}
+    void on(const OrderCancel& /*message*/) noexcept {}
+    void on(const OrderDelete& /*message*/) noexcept {}
+    void on(const OrderReplace& /*message*/) noexcept {}
+    void on(const Trade& /*message*/) noexcept {}
+    void on(const CrossTrade& /*message*/) noexcept {}
+    void on(const BrokenTrade& /*message*/) noexcept {}
+    void on_skipped(const Header& /*header*/) noexcept {}
 };
 
 } // namespace itchbt::itch

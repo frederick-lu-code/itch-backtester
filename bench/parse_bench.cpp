@@ -70,7 +70,9 @@ int usage() {
 
 } // namespace
 
-int main(int argc, char** argv) {
+namespace {
+
+int run(int argc, char** argv) {
     Args args(argc, argv);
     bool bad = false;
     const auto input = args.value("--input");
@@ -132,4 +134,10 @@ int main(int argc, char** argv) {
         return 1;
     }
     return 0;
+}
+
+} // namespace
+
+int main(int argc, char** argv) {
+    return itchbt::run_tool("parse_bench", [&] { return run(argc, argv); });
 }
