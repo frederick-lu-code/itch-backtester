@@ -30,7 +30,7 @@ public:
     /// Capacity is rounded up to a power of two so that indices wrap with a mask.
     explicit SpscRing(std::size_t capacity)
         : capacity_(std::bit_ceil(capacity < 2 ? std::size_t{2} : capacity)), mask_(capacity_ - 1),
-          slots_(std::make_unique<T[]>(capacity_)) {}
+          slots_(capacity_) {}
 
     SpscRing(const SpscRing&) = delete;
     SpscRing& operator=(const SpscRing&) = delete;
