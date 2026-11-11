@@ -3,7 +3,7 @@
 // the Python reference book consumes.
 //
 //   book-dump --input data/<file> --symbol AAPL --at 10:30:00 --depth 10
-//   book-dump --input data/<file> --symbols AAPL,MSFT --max-messages 5000000 --depth 0 \
+//   book-dump --input data/<file> --symbols AAPL,MSFT --max-messages 5000000 --depth 0
 //             --format csv --checkpoint-every 1000000
 
 #include "itchbt/book/book.hpp"

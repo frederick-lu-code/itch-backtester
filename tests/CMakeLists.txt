@@ -18,6 +18,7 @@ add_executable(
     unit/order_state_test.cpp
     unit/parser_test.cpp
     unit/reader_test.cpp
+    unit/risk_test.cpp
     unit/sha256_test.cpp
     unit/util_test.cpp)
 target_link_libraries(unit_tests PRIVATE itchbt_test_support itchbt_warnings GTest::gmock_main)
