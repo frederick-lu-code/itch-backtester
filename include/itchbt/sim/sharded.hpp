@@ -108,7 +108,7 @@ public:
 
     void at(std::uint64_t offset) noexcept {
         const std::byte* const message = base_ + offset + itch::kLengthPrefixSize;
-        const Locate locate = load_be<std::uint16_t>(message + 1);
+        const auto locate = load_be<std::uint16_t>(message + 1);
         if (locate == 0) {
             // Session-wide (system events, market-wide circuit breakers): everyone needs it.
             for (auto& queue : queues_) {

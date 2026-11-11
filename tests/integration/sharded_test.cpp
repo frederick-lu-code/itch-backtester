@@ -209,7 +209,7 @@ TEST(Sharded, EveryMessageReachesExactlyOneShardOrAll) {
 TEST(Sharded, RefusesLimitsThatSpanSymbols) {
     const ItchWriter stream = market(36, 1'000);
     const auto make = [](const Config& /*c*/) { return strategies::NoOp(); };
-    const auto error_for = [&](Config config) {
+    const auto error_for = [&](const Config& config) {
         return run_sharded(stream.bytes(), config, 2, {}, false, record::RecorderMode::Async, make)
             .error;
     };

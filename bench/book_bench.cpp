@@ -24,6 +24,7 @@
 #include "itchbt/util/platform.hpp"
 #include "itchbt/util/ticks.hpp"
 
+#include <array>
 #include <cinttypes>
 #include <cstdint>
 #include <cstdio>
@@ -203,15 +204,15 @@ std::string latency_row(const char* label, const Histogram& h, double ns_per_tic
     const auto ns = [ns_per_tick](std::uint64_t ticks) {
         return static_cast<double>(ticks) * ns_per_tick;
     };
-    char row[320];
-    std::snprintf(row, sizeof(row),
+    std::array<char, 320> row{};
+    std::snprintf(row.data(), row.size(),
                   "{\"type\": \"%s\", \"count\": %" PRIu64
                   ", \"p50_ns\": %.1f, \"p90_ns\": %.1f, \"p99_ns\": %.1f, \"p999_ns\": %.1f, "
                   "\"max_ns\": %.1f, \"mean_ns\": %.1f}",
                   label, h.count(), ns(h.percentile(0.50)), ns(h.percentile(0.90)),
                   ns(h.percentile(0.99)), ns(h.percentile(0.999)), ns(h.max()),
                   h.mean() * ns_per_tick);
-    return row;
+    return row.data();
 }
 
 int usage() {
@@ -299,12 +300,12 @@ int run(int argc, char** argv) {
                 continue;
             }
             all->merge(h);
-            const char label[2] = {static_cast<char>(type), '\0'};
-            rows += ", " + latency_row(label, h, ns_per_tick);
+            const std::array<char, 2> label = {static_cast<char>(type), '\0'};
+            rows += ", " + latency_row(label.data(), h, ns_per_tick);
         }
-        char resolution[64];
-        std::snprintf(resolution, sizeof(resolution), "\"tick_ns\": %.3f", ns_per_tick);
-        result.raw_members.emplace_back(resolution);
+        std::array<char, 64> resolution{};
+        std::snprintf(resolution.data(), resolution.size(), "\"tick_ns\": %.3f", ns_per_tick);
+        result.raw_members.emplace_back(resolution.data());
         result.raw_members.push_back("\"latency\": [" + latency_row("all", *all, ns_per_tick) +
                                      rows + "]");
     }
