@@ -87,6 +87,11 @@ jobs:
           cache: pip
           cache-dependency-path: analysis/requirements.txt
       - name: Install dependencies
-        run: pip install -r analysis/requirements.txt
+        run: |
+          pip install -r analysis/requirements.txt
+          sudo apt-get update && sudo apt-get install -y ninja-build
+      - name: Build the C++ tools the differential tests drive
+        run: cmake --preset release && cmake --build --preset release
       - name: Test
-        run: pytest analysis
+        # -rs lists skipped tests: only the real-data test may skip here.
+        run: pytest -rs analysis
