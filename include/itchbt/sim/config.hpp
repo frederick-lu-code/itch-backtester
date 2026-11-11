@@ -76,7 +76,9 @@ struct Config {
     bool build_all_books = true;
     std::size_t event_queue_capacity = std::size_t{1} << 16;
     /// Expected peak live orders, to size the order store up front.
-    std::size_t expected_orders = std::size_t{1} << 22;
+    std::size_t expected_orders = std::size_t{1} << 21;
+    /// Price levels to make room for, per side, in each traded symbol's book.
+    std::size_t level_reserve = 8192;
     /// Records the writer thread may fall behind by before the engine blocks (M5).
     std::size_t recorder_ring_capacity = std::size_t{1} << 16;
     LatencyConfig latency;

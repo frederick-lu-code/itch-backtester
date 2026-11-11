@@ -202,6 +202,7 @@ public:
     }
 
     [[nodiscard]] std::size_t size() const noexcept { return levels_.size(); }
+    void reserve(std::size_t levels) { levels_.reserve(levels); }
 
     [[nodiscard]] std::optional<std::pair<std::uint32_t, Level>> best() const noexcept {
         if (levels_.empty()) {

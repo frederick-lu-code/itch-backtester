@@ -156,6 +156,7 @@ std::optional<Config> load_config(const std::filesystem::path& path, std::string
     root.boolean("build_all_books", config.build_all_books);
     root.integer("event_queue_capacity", config.event_queue_capacity);
     root.integer("expected_orders", config.expected_orders);
+    root.integer("level_reserve", config.level_reserve);
     root.integer("recorder_ring_capacity", config.recorder_ring_capacity);
 
     Section latency(root.table("latency"), "latency", error);
@@ -236,6 +237,7 @@ std::string to_json(const Config& config) {
     json += config.build_all_books ? "true, " : "false, ";
     append(json, "event_queue_capacity", config.event_queue_capacity);
     append(json, "expected_orders", config.expected_orders);
+    append(json, "level_reserve", config.level_reserve);
     append(json, "recorder_ring_capacity", config.recorder_ring_capacity);
 
     json += "\"latency\": {";

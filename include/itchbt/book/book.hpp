@@ -106,6 +106,14 @@ public:
     [[nodiscard]] std::size_t level_count() const noexcept { return levels_.size(); }
     [[nodiscard]] Side side() const noexcept { return side_; }
 
+    /// Makes room for `levels` price levels up front, where the container supports it, so
+    /// that adding levels later does not allocate.
+    void reserve(std::size_t levels) {
+        if constexpr (requires { levels_.reserve(levels); }) {
+            levels_.reserve(levels);
+        }
+    }
+
 private:
     Side side_;
     Levels levels_;
@@ -211,6 +219,28 @@ public:
         change.removed = remove(old_ref);
         change.added = add(new_ref, locate, side, qty, price);
         return change;
+    }
+
+    /// Pre-sizes both sides of one symbol's book.
+    void reserve_levels(Locate locate, std::size_t levels) {
+        books_[locate].bids.reserve(levels);
+        books_[locate].asks.reserve(levels);
+    }
+
+    /// Hints the CPU to load the order store's slot for `ref`, where the store supports it.
+    void prefetch_order(OrderRef ref) const noexcept {
+        if constexpr (requires { orders_.prefetch(ref); }) {
+            orders_.prefetch(ref);
+        }
+    }
+
+    /// Times the order store had to grow after construction (0 for stores that do not report).
+    [[nodiscard]] std::uint64_t order_store_rehashes() const noexcept {
+        if constexpr (requires { orders_.rehashes(); }) {
+            return orders_.rehashes();
+        } else {
+            return 0;
+        }
     }
 
     [[nodiscard]] const BookType& book(Locate locate) const noexcept { return books_[locate]; }

@@ -383,6 +383,9 @@ inline bool EngineCore::prepare(std::span<const std::byte> data, std::string& er
     // The run itself rebuilds the directory message by message; keep the scan's copy so that
     // on_start can already resolve names.
     directory_ = scanned;
+    for (const Locate locate : locates_) {
+        books_.reserve_levels(locate, config_.level_reserve);
+    }
     exchange_.configure(config_.exchange, locates_);
     risk_.configure(config_.risk, config_.exchange.extended_hours, locates_.size());
     return true;
@@ -601,6 +604,23 @@ public:
         ++stats_.trades;
         strategy_.on_trade(trade, context_);
     }
+    /// Parser hook: a look at the next message while this one is being handled. The order
+    /// store's slot for its reference is prefetched, which hides most of the cache miss that
+    /// dominates a book update (BENCHMARKS.md, optimisation log). A hint only: it cannot
+    /// change any result.
+    void lookahead(const std::byte* next) noexcept {
+        switch (std::to_integer<char>(next[0])) {
+        case 'A':
+        case 'F':
+        case 'E':
+        case 'C':
+        case 'X':
+        case 'D':
+        case 'U': books_.prefetch_order(load_be<std::uint64_t>(next + 11)); break;
+        default: break;
+        }
+    }
+
     void on(const itch::CrossTrade& m) { begin(m.h); }
     void on(const itch::BrokenTrade& m) { begin(m.h); }
     void on_skipped(const itch::Header& h) { begin(h); }
