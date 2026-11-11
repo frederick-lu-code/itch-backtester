@@ -1,0 +1,23 @@
+# Checks are errors in CI. Relaxing or disabling one needs the owner's approval (spec section 12).
+Checks: >
+  -*,
+  bugprone-*,
+  -bugprone-easily-swappable-parameters,
+  cert-*,
+  clang-analyzer-*,
+  concurrency-*,
+  misc-*,
+  -misc-include-cleaner,
+  -misc-non-private-member-variables-in-classes,
+  modernize-*,
+  -modernize-use-trailing-return-type,
+  performance-*,
+  portability-*,
+  -portability-avoid-pragma-once,
+  readability-*,
+  -readability-identifier-length,
+  -readability-magic-numbers,
+  -readability-function-cognitive-complexity
+WarningsAsErrors: '*'
+HeaderFilterRegex: '(include/itchbt|src|apps|strategies|tests|bench)/'
+FormatStyle: file
