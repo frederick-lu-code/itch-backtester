@@ -5,9 +5,10 @@
 //              [--reserve N] [--runs 10] [--warmup 1] [--cpu N] [--max-messages N]
 //              [--out result.json]
 //
-// A fingerprint of every level of every book is computed after each run, outside the timed
-// region. It must be identical across runs and across book implementations: a faster book
-// that builds a different book is not faster, it is wrong.
+// A fingerprint of every level of every book is folded in at regular checkpoints during the
+// run and once at the end. It must be identical across runs and across book implementations:
+// a faster book that builds a different book is not faster, it is wrong. The checkpoints are
+// inside the timed region and cost every variant the same few milliseconds.
 //
 // Built with -DITCHBT_TIMING=ON (the `timing` preset) it also times every message with the
 // CPU's tick counter and reports latency percentiles by message type. Throughput is always
@@ -93,10 +94,41 @@ struct BuildHandler {
     void apply(const Message& m) {
         type = m.h.type;
         book::apply(books, m);
+        // Every 2^24 book operations, fold the whole state of every book into the fingerprint.
+        // At the end of a full day the books are empty, so a fingerprint taken only then
+        // would be the same for any implementation, right or wrong.
+        if ((++operations & ((std::uint64_t{1} << 24) - 1)) == 0) {
+            fold_books();
+        }
+    }
+
+    void fold_books() {
+        const auto mix = [this](std::uint64_t x) {
+            fingerprint = (fingerprint ^ x) * 0x9E3779B97F4A7C15ULL;
+        };
+        for (std::size_t locate = 0; locate < Books::kLocateCount; ++locate) {
+            for (const Side side : {Side::Buy, Side::Sell}) {
+                books.book(static_cast<Locate>(locate))
+                    .side(side)
+                    .for_each([&](const book::LevelView& v) {
+                        mix(locate);
+                        mix(static_cast<std::uint64_t>(side));
+                        mix(v.price);
+                        mix(v.qty);
+                        mix(v.orders);
+                        return true;
+                    });
+            }
+        }
+        mix(books.live_orders());
+        ++checkpoints;
     }
 
     Books books;
     Latency* latency;
+    std::uint64_t operations = 0;
+    std::uint64_t fingerprint = 0;
+    std::uint64_t checkpoints = 0;
     std::uint64_t started = 0;
     char type = '\0';
 };
@@ -106,6 +138,7 @@ struct RunOutput {
     std::uint64_t messages = 0;
     std::uint64_t bytes = 0;
     std::uint64_t fingerprint = 0;
+    std::uint64_t checkpoints = 0;
     std::uint64_t peak_orders = 0;
     std::uint64_t orders_added = 0;
     std::uint64_t anomalies = 0;
@@ -146,23 +179,9 @@ RunOutput run_once(const std::string& path, std::size_t reserve, std::uint64_t m
     out.peak_orders = handler.books.peak_live_orders();
     out.orders_added = handler.books.last_sequence();
     out.anomalies = handler.books.anomalies().total();
-    for (std::size_t locate = 0; locate < Books::kLocateCount; ++locate) {
-        for (const Side side : {Side::Buy, Side::Sell}) {
-            handler.books.book(static_cast<Locate>(locate))
-                .side(side)
-                .for_each([&](const book::LevelView& v) {
-                    const auto mix = [&out](std::uint64_t x) {
-                        out.fingerprint = (out.fingerprint ^ x) * 0x9E3779B97F4A7C15ULL;
-                    };
-                    mix(locate);
-                    mix(static_cast<std::uint64_t>(side));
-                    mix(v.price);
-                    mix(v.qty);
-                    mix(v.orders);
-                    return true;
-                });
-        }
-    }
+    handler.fold_books(); // and once more at the end
+    out.fingerprint = handler.fingerprint;
+    out.checkpoints = handler.checkpoints;
     return out;
 }
 
@@ -261,6 +280,7 @@ int run(int argc, char** argv) {
     result.messages = first.messages;
     result.bytes = first.bytes;
     result.counters.emplace_back("book_fingerprint_low32", first.fingerprint & 0xFFFFFFFFU);
+    result.counters.emplace_back("fingerprint_checkpoints", first.checkpoints);
     result.counters.emplace_back("orders_added", first.orders_added);
     result.counters.emplace_back("peak_live_orders", first.peak_orders);
     result.counters.emplace_back("anomalies", first.anomalies);

@@ -70,11 +70,11 @@ def cores(sysinfo: dict) -> str:
     return str(sysinfo.get("logical_cpus", "?")) + " logical"
 
 
-def machine_table(directory: Path, sysinfo: dict) -> str:
+def machine_table(directory: list[Path], sysinfo: dict) -> str:
     low_power = {"1": ", **Low Power Mode on**", "0": ", Low Power Mode off"}.get(
         sysinfo.get("low_power_mode", ""), "")
     return table(["Item", "Value"], [
-        ["Results directory", f"`{directory.relative_to(ROOT)}`"],
+        ["Results", ", ".join(f"`{d.relative_to(ROOT)}`" for d in directory)],
         ["Commit", f"`{sysinfo.get('git_commit', '?')[:12]}`"
          + (" (dirty tree)" if sysinfo.get("git_dirty") == "yes" else "")],
         ["CPU", sysinfo.get("cpu_model", "?")],
@@ -106,7 +106,8 @@ def book_table(rows: list[dict]) -> str:
          "Seconds, median (min to max)", "Runs", "Book fingerprint"],
         [[r["variant"], spread(per_second(r), 1e6, 2), f"{med(per_second(r)) / base_rate:.2f}x",
           spread(r["run_seconds"], 1, 1), len(r["run_seconds"]),
-          f"`{r.get('book_fingerprint_low32', 0):08x}`"] for r in rows])
+          (f"`{r['book_fingerprint_low32']:08x}` ({r['fingerprint_checkpoints']} checkpoints)"
+           if r.get("fingerprint_checkpoints") else "not recorded")] for r in rows])
 
 
 def memory_table(rows: list[dict]) -> str:
@@ -291,7 +292,10 @@ def replace_block(text: str, name: str, body: str | None) -> str:
 
 
 def main(argv: list[str]) -> int:
-    available = sorted(d for d in RESULTS.iterdir() if d.is_dir())
+    # Most recent by the time recorded inside each directory: names sort by date and then by
+    # commit hash, which says nothing about order within a day.
+    available = sorted((d for d in RESULTS.iterdir() if (d / "sysinfo.json").is_file()),
+                       key=lambda d: json.loads((d / "sysinfo.json").read_text())["date_utc"])
     directories = [Path(a).resolve() for a in argv] or available[-1:]
     if not directories:
         print("no result directories found", file=sys.stderr)
@@ -317,7 +321,7 @@ def main(argv: list[str]) -> int:
                      key=lambda r: order.index(r["variant"]) if r["variant"] in order else 99)
 
     text = TARGET.read_text()
-    text = replace_block(text, "machine", machine_table(directories[-1], sysinfo))
+    text = replace_block(text, "machine", machine_table(directories, sysinfo))
     text = replace_block(text, "parse_only", throughput_table(of("parse_only")) if of("parse_only") else None)
     text = replace_block(text, "parse_faults", parse_fault_table(of("parse_only")) if of("parse_only") else None)
     text = replace_block(text, "book_build", book_table(books) if books else None)

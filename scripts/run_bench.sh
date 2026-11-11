@@ -53,6 +53,32 @@ mkdir -p "$OUT"
 printf '%s\n' "$SYSINFO" >"$OUT/sysinfo.json"
 echo "Results in $OUT"
 
+# A laptop on battery with its lid shut naps regardless of caffeinate, and a nap in the middle
+# of a run turns a 40-second measurement into a 400-second one. On macOS each benchmark is
+# therefore run under `awake`, which checks the power log afterwards and repeats the benchmark
+# (up to five times) if the machine slept while it ran.
+sleep_events() {
+    pmset -g log 2>/dev/null | grep -c "Entering Sleep" || true
+}
+awake() {
+    if [[ "$(uname -s)" != "Darwin" ]]; then
+        "$@"
+        return
+    fi
+    local attempt before after
+    for attempt in 1 2 3 4 5; do
+        before="$(sleep_events)"
+        "$@"
+        after="$(sleep_events)"
+        if [[ "$before" == "$after" ]]; then
+            return 0
+        fi
+        echo "   machine slept during this run (attempt $attempt); repeating" >&2
+    done
+    echo "error: could not get a run without the machine sleeping: $*" >&2
+    return 1
+}
+
 BIN=build/release/bench
 CPU=(${CPU_ARGS[@]+"${CPU_ARGS[@]}"})
 wanted() { [[ -z "$ONLY" || "$ONLY" == "$1" ]]; }
@@ -61,7 +87,7 @@ if wanted parse; then
     for reader in mmap read; do
         for handler in decode frame; do
             echo "== parse_only $reader/$handler"
-            "$BIN/parse_bench" --input "$INPUT" --reader "$reader" --handler "$handler" \
+            awake "$BIN/parse_bench" --input "$INPUT" --reader "$reader" --handler "$handler" \
                 --runs "$RUNS" ${CPU[@]+"${CPU[@]}"} --out "$OUT/parse_${reader}_${handler}.json"
         done
     done
@@ -74,7 +100,7 @@ book() { # name, binary, book, runs, extra args...
     local name="$1" binary="$2" book="$3" runs="$4"
     shift 4
     echo "== book_build $name"
-    "$binary" --input "$INPUT" --book "$book" --runs "$runs" "$@" ${CPU[@]+"${CPU[@]}"} \
+    awake "$binary" --input "$INPUT" --book "$book" --runs "$runs" "$@" ${CPU[@]+"${CPU[@]}"} \
         --out "$OUT/book_$name.json"
 }
 
@@ -90,13 +116,13 @@ fi
 if wanted latency; then
     TBIN=build/timing/bench
     echo "== book_latency baseline"
-    "$TBIN/book_bench" --input "$INPUT" --book baseline --runs 2 ${CPU[@]+"${CPU[@]}"} \
+    awake "$TBIN/book_bench" --input "$INPUT" --book baseline --runs 2 ${CPU[@]+"${CPU[@]}"} \
         --out "$OUT/latency_baseline.json"
     echo "== book_latency optimised"
-    "$TBIN/book_bench" --input "$INPUT" --book optimised --reserve "$RESERVE" --runs 3 \
+    awake "$TBIN/book_bench" --input "$INPUT" --book optimised --reserve "$RESERVE" --runs 3 \
         ${CPU[@]+"${CPU[@]}"} --out "$OUT/latency_optimised.json"
     echo "== book_latency optimised/prefetch"
-    "$TBIN/book_bench_prefetch" --input "$INPUT" --book optimised --reserve "$RESERVE" --runs 3 \
+    awake "$TBIN/book_bench_prefetch" --input "$INPUT" --book optimised --reserve "$RESERVE" --runs 3 \
         ${CPU[@]+"${CPU[@]}"} --out "$OUT/latency_optimised_prefetch.json"
 fi
 
@@ -105,8 +131,9 @@ if wanted e2e; then
     for recorder in async sync none; do
         echo "== end_to_end passive_maker/$recorder"
         for i in $(seq 0 "$RUNS_SLOW"); do # run 0 is the warm-up
-            build/release/apps/backtest --input "$INPUT" --config configs/passive_maker.toml \
-                --out "$SCRATCH/$recorder-$i" --recorder "$recorder" --skip-input-hash | head -1
+            awake build/release/apps/backtest --input "$INPUT" \
+                --config configs/passive_maker.toml --out "$SCRATCH/$recorder-$i" \
+                --recorder "$recorder" --skip-input-hash | head -1
         done
         python3 - "$SCRATCH" "$recorder" "$RUNS_SLOW" "$INPUT" >"$OUT/e2e_$recorder.json" <<'PY'
 import json, os, sys
@@ -132,7 +159,7 @@ fi
 
 if wanted micro; then
     echo "== micro"
-    ITCHBT_DATA="$INPUT" "$BIN/micro_bench" --benchmark_min_time=1s \
+    ITCHBT_DATA="$INPUT" awake "$BIN/micro_bench" --benchmark_min_time=1s \
         --benchmark_out="$OUT/micro.json" --benchmark_out_format=json
 fi
 
