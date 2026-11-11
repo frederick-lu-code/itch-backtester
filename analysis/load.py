@@ -30,9 +30,23 @@ class Run:
 
 
 def read_records(path: str | Path, name: str) -> np.ndarray:
-    """Reads one record file as a structured array, checking its header first."""
+    """Reads one kind of record from a run directory as a structured array.
+
+    A sharded run keeps each shard's files under shard-<k>/. Their records are concatenated
+    and stably sorted by time: every symbol lives in exactly one shard, so each symbol's
+    records keep their original order.
+    """
+    shards = sorted(Path(path).glob("shard-*"), key=lambda p: int(p.name.split("-")[1]))
+    if not shards:
+        return _read_file(Path(path), name)
+    merged = np.concatenate([_read_file(shard, name) for shard in shards])
+    return merged[np.argsort(merged["ts"], kind="stable")]
+
+
+def _read_file(path: Path, name: str) -> np.ndarray:
+    """Reads one record file, checking its header first."""
     file_name, type_id, dtype = schema.RECORDS[name]
-    path = Path(path) / file_name
+    path = path / file_name
     size = path.stat().st_size
     header_size = schema.FILE_HEADER.itemsize
     if size < header_size:

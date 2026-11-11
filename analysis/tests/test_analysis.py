@@ -199,3 +199,68 @@ def test_run_json_records_the_input_digest(synthetic_run):
     assert meta["input"]["file"] == "session.itch"
     assert meta["config"]["strategy"] == "passive_maker"
     assert not math.isnan(meta["timing"]["wall_time_s"])
+
+
+SHARDABLE_CONFIG = """
+strategy = "passive_maker"
+symbols = ["AAA", "BBB"]
+
+[latency]
+order_ns = 2000
+cancel_ns = 2000
+ack_ns = 1000
+
+[risk]
+max_position = 600
+max_open_orders = 4
+
+[passive_maker]
+max_inventory = 400
+"""
+
+
+def test_sharded_run_matches_single_threaded_per_symbol(synthetic_run, tmp_path):
+    config = tmp_path / "shardable.toml"
+    config.write_text(SHARDABLE_CONFIG)
+    runs = {}
+    for name, extra in (("single", []), ("sharded", ["--shards", "2"])):
+        out = tmp_path / name
+        result = subprocess.run(
+            [str(synthetic_run["backtest"]), "--input", str(synthetic_run["input"]), "--config",
+             str(config), "--out", str(out), *extra], capture_output=True, text=True, check=False)
+        assert result.returncode == 0, result.stderr
+        runs[name] = load.load_run(out)
+    single, sharded = runs["single"], runs["sharded"]
+    assert sharded.meta["shards"] == 2 and single.meta["shards"] == 1
+    assert (tmp_path / "sharded" / "shard-1" / "fills.bin").is_file()
+    assert single.meta["stats"]["fills"] > 50
+
+    # Engine totals and per-symbol risk agree exactly.
+    for key in ("messages", "orders_submitted", "fills", "shares_filled", "cancels_requested",
+                "book_updates", "trades"):
+        assert single.meta["stats"][key] == sharded.meta["stats"][key], key
+    assert single.meta["risk"] == sharded.meta["risk"]
+    assert single.meta["symbols"] == sharded.meta["symbols"]
+    assert single.meta["records"] == sharded.meta["records"]
+
+    # And so does every record, symbol by symbol.
+    for name in ("orders", "fills", "bbo", "risk"):
+        for symbol in ("AAA", "BBB"):
+            a = getattr(single, name)
+            b = getattr(sharded, name)
+            a = a[a["symbol"] == symbol].reset_index(drop=True)
+            b = b[b["symbol"] == symbol].reset_index(drop=True)
+            pd.testing.assert_frame_equal(a, b, check_categorical=False)
+
+    # The analysis sees no difference either.
+    pd.testing.assert_frame_equal(report.final_pnl(single), report.final_pnl(sharded))
+
+
+def test_sharding_refuses_cross_symbol_limits(synthetic_run, tmp_path):
+    result = subprocess.run(
+        [str(synthetic_run["backtest"]), "--input", str(synthetic_run["input"]), "--config",
+         str(synthetic_run["config"]), "--out", str(tmp_path / "x"), "--shards", "2"],
+        capture_output=True, text=True, check=False)
+    assert result.returncode == 1
+    assert "cannot be used with --shards" in result.stderr
+    assert "risk.rate_limit_per_second" in result.stderr

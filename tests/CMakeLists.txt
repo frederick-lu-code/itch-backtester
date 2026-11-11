@@ -32,7 +32,8 @@ add_executable(property_tests property/book_property_test.cpp)
 target_link_libraries(property_tests PRIVATE itchbt_test_support itchbt_warnings GTest::gmock_main)
 gtest_discover_tests(property_tests)
 
-add_executable(integration_tests integration/engine_test.cpp integration/strategies_test.cpp)
+add_executable(integration_tests integration/engine_test.cpp integration/sharded_test.cpp
+                                 integration/strategies_test.cpp)
 target_link_libraries(integration_tests PRIVATE itchbt_test_support itchbt_warnings
                                                 GTest::gmock_main)
 target_include_directories(integration_tests PRIVATE ${PROJECT_SOURCE_DIR}/strategies)

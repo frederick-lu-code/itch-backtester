@@ -505,13 +505,23 @@ public:
     [[nodiscard]] itch::ParseResult
     run(std::span<const std::byte> data,
         std::uint64_t max_messages = std::numeric_limits<std::uint64_t>::max()) {
-        strategy_.on_start(context_);
+        start();
         const itch::ParseResult result = itch::parse(data, *this, max_messages);
-        stats_.messages = result.messages;
+        finish(result.messages);
+        return result;
+    }
+
+    // The same run in three steps, for callers that feed messages themselves (the sharded
+    // runner hands each worker one message at a time from a queue).
+
+    void start() { strategy_.on_start(context_); }
+    /// Handles one validated message: `message` points at its type byte.
+    void handle(const std::byte* message) { itch::dispatch(message, *this); }
+    void finish(std::uint64_t messages) {
+        stats_.messages = messages;
         // Deliver whatever is still in flight, in order, however far in the future.
         release_until(std::numeric_limits<Timestamp>::max());
         strategy_.on_end(context_);
-        return result;
     }
 
     // --- Parser handler --------------------------------------------------------------------------
