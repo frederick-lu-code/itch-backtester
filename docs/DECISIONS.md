@@ -385,5 +385,5 @@ Gathered in one place. Each is explained above or in `BENCHMARKS.md`.
 | `Context` as listed | Plus `tradable`, `symbols`, `symbol_name`, `find_symbol` | A strategy needs to know when it can trade |
 | Propose interfaces and wait for approval before each milestone | Done for M0 and M1; the owner then waived approval for the rest | The owner's instruction |
 | Targets in 8.6 met or the gap explained | None met outright in the published run; explained | Battery, Low Power Mode, and a laptop CPU measured against desktop aims |
-| At least six `DEBUGGING.md` entries from real bugs | Twenty-two real, two labelled exercises | Three of the eight categories never arose naturally |
+| At least six `DEBUGGING.md` entries from real bugs | Twenty real, two labelled exercises | Three of the eight categories never arose naturally |
 | Hot path allocation-free | For traded symbols with adequately sized stores | Untraded symbols' level arrays grow on demand when every book is built |

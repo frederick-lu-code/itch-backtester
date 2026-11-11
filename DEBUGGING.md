@@ -742,6 +742,47 @@ up to five times. The deleted measurements were repeated under that guard.
 The guard, and the habit that found the problem: results are read before they are published,
 and a number that cannot be true is investigated, not reported.
 
+## The sleep guard's retry was killed by the pipe it was writing to
+
+- Date / commit: 2026-11-12, `cd9db4e`
+- Area: performance (tooling)
+- Tools: reading the suite's log
+
+### Symptom
+With the new sleep guard in place, the end-to-end and sharding parts of the suite each printed
+one run, one "machine slept during this run (attempt 1); repeating", and then stopped without
+an error. No result file was written for either.
+
+```
+== end_to_end passive_maker/async
+strategy passive_maker on 10 symbols: 268744780 messages in 338.93 s (0.79 M msg/s)
+   machine slept during this run (attempt 1); repeating
+Results in bench/results/2026-11-12-3a6dcf0
+== sharding 1
+```
+
+Separately, the latency part failed all five attempts, as designed, but left the fifth
+attempt's sleep-affected `latency_baseline.json` in the results directory.
+
+### Investigation
+The two parts that stopped silently were the two whose command line ended in `| head -1`, to
+show only the summary line of each backtest.
+
+### Root cause
+`head -1` exits after one line. The first attempt printed its line and `head` was gone; the
+retry then wrote to a closed pipe, was killed by SIGPIPE, and `set -o pipefail` ended the
+script. The guard had only ever been tried on commands that were not piped. The leftover file
+was a second gap: a benchmark that gives up should not leave its last output where the
+renderer will find it.
+
+### Fix
+Those commands write to a log file and the summary line is extracted afterwards. When the
+guard gives up it deletes the output named by `--out` or `--benchmark_out`.
+
+### Prevention
+None automated: the suite needs the data file and minutes of machine time, so it is not in
+CI. The stray result was caught by listing the results directory before rendering it.
+
 ## EXERCISE (fault injection): reading the 6-byte timestamp as 8 bytes
 
 This is a deliberate exercise, not a bug that occurred. No memory error arose naturally while
@@ -869,9 +910,9 @@ The specification asks for entries covering as many of eight categories as arise
 | System-level surprise | Yes | Page faults making `mmap` slower than `read()`; Apple's assembler dropping an instruction; the unlinkable toolchain |
 
 The other entries are logic and tooling bugs caught by tests, by CI or by reading output:
-the time parser, the config loader, the flat map's empty marker, two wrong tests, a broken
-commit, unformatted files, a vacuous fingerprint, a misleading micro-benchmark and three
-script bugs.
+the time parser, the config loader, the flat map's empty marker, a wrong test, a broken
+commit, unformatted files, a vacuous fingerprint, a misleading micro-benchmark, a GCC-only
+warning and four script bugs. Twenty entries describe bugs that happened; two are exercises.
 
 ## Entry template
 
