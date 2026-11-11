@@ -74,7 +74,7 @@ TEST(RiskChecks, MaxOrderQuantityBoundary) {
 
 TEST(RiskChecks, MaxOrderNotionalBoundary) {
     RiskConfig c;
-    c.max_order_notional = 100 * 1'000'000; // 100 shares at 100.0000
+    c.max_order_notional = 100'000'000; // 100 shares at 100.0000
     RiskGate gate(c, false, 1);
     EXPECT_EQ(check(gate, Side::Buy, 999'999, 100), RejectReason::None);
     EXPECT_EQ(check(gate, Side::Buy, 1'000'000, 100), RejectReason::None);
@@ -172,7 +172,7 @@ TEST(RiskChecks, PartialFillDoesNotFreeAnOpenOrderSlot) {
 
 TEST(RiskChecks, MaxGrossNotionalCountsPositionsOpenOrdersAndTheNewOrder) {
     RiskConfig c;
-    c.max_gross_notional = 1'000 * 1'000'000; // 1,000 shares' worth at 100.0000
+    c.max_gross_notional = 1'000'000'000; // 1,000 shares' worth at 100.0000
     RiskGate gate(c, false, 2);
     // Symbol 0: long 400 marked at the 100.0000 mid.
     ASSERT_EQ(gate.check_and_reserve(0, Side::Buy, 1'000'000, 400, 0, market()),
@@ -183,7 +183,7 @@ TEST(RiskChecks, MaxGrossNotionalCountsPositionsOpenOrdersAndTheNewOrder) {
     // Symbol 1: an open sell of 300 at 100.0000.
     ASSERT_EQ(gate.check_and_reserve(1, Side::Sell, 1'000'000, 300, 0, market()),
               RejectReason::None);
-    EXPECT_EQ(gate.gross_position_notional2(), 2 * 400 * 1'000'000LL);
+    EXPECT_EQ(gate.gross_position_notional2(), 800'000'000);
     EXPECT_EQ(gate.open_notional(), 300 * 1'000'000LL);
     // 700 used, so 300 more is exactly the limit.
     EXPECT_EQ(gate.check_and_reserve(1, Side::Buy, 1'000'000, 301, 0, market()),
@@ -386,7 +386,7 @@ TEST(RiskPnl, FillAtADifferentPriceThanTheLimitReleasesTheLimitNotional) {
 
 TEST(KillSwitch, TripsOnlyWhenTheLossExceedsTheLimit) {
     RiskConfig c;
-    c.loss_limit = 100 * 10'000; // 100 dollars
+    c.loss_limit = 1'000'000; // 100 dollars
     RiskGate gate(c, false, 1);
     trade(gate, Side::Buy, 1'000'000, 100);
     EXPECT_FALSE(gate.on_top_of_book(0, market(990'000, 990'000))); // down exactly 100 dollars
@@ -411,7 +411,7 @@ TEST(KillSwitch, OnceTrippedEveryNewOrderIsRejected) {
 
 TEST(KillSwitch, ARealisedLossTripsItOnTheFill) {
     RiskConfig c;
-    c.loss_limit = 50 * 10'000;
+    c.loss_limit = 500'000;
     RiskGate gate(c, false, 1);
     trade(gate, Side::Buy, 1'000'000, 100);
     ASSERT_EQ(check(gate, Side::Sell, 990'000, 100), RejectReason::None);
