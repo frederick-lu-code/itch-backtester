@@ -709,6 +709,7 @@ private:
             update.ask_price = ask->price;
             update.ask_qty = ask->qty;
         }
+        const bool tradable = can_trade(locate);
         if (recorder_.enabled()) {
             record::BboRecord r;
             r.ts = now_;
@@ -717,14 +718,15 @@ private:
             r.bid_price = update.bid_price;
             r.ask_price = update.ask_price;
             r.locate = locate;
-            r.flags =
-                static_cast<std::uint8_t>((update.has_bid ? 1U : 0U) | (update.has_ask ? 2U : 0U));
+            r.flags = static_cast<std::uint8_t>((update.has_bid ? record::kBboHasBid : 0U) |
+                                                (update.has_ask ? record::kBboHasAsk : 0U) |
+                                                (tradable ? record::kBboTradable : 0U));
             recorder_.write(r);
         }
         // Positions are marked only while the symbol can trade. Outside the session the book
         // is thin and its mid means little: on the reference day one symbol ends the evening
         // quoted 200.00 x 414.95. The last in-session mark stands instead.
-        if (can_trade(locate)) {
+        if (tradable) {
             risk::MarketView view;
             view.has_bid = update.has_bid;
             view.has_ask = update.has_ask;

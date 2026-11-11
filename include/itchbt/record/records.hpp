@@ -85,9 +85,15 @@ struct BboRecord {
     std::uint32_t bid_price = 0;
     std::uint32_t ask_price = 0;
     std::uint16_t locate = 0;
-    std::uint8_t flags = 0; // bit 0: has bid, bit 1: has ask
+    std::uint8_t flags = 0; // kBboHasBid | kBboHasAsk | kBboTradable
     std::array<std::uint8_t, 5> pad{};
 };
+
+inline constexpr std::uint8_t kBboHasBid = 1;
+inline constexpr std::uint8_t kBboHasAsk = 2;
+/// The symbol could trade at that moment: session open (or extended hours on) and not halted.
+/// Positions are marked to the mid only on records with this bit.
+inline constexpr std::uint8_t kBboTradable = 4;
 
 enum class RiskEventKind : std::uint8_t { Reject = 0, KillSwitch = 1 };
 

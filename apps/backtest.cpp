@@ -15,6 +15,7 @@
 
 #include "itchbt/itch/reader.hpp"
 #include "itchbt/record/recorder.hpp"
+#include "itchbt/record/schema.hpp"
 #include "itchbt/sim/config.hpp"
 #include "itchbt/sim/engine.hpp"
 #include "itchbt/util/cli.hpp"
@@ -160,6 +161,10 @@ int usage() {
 
 int run(int argc, char** argv) {
     Args args(argc, argv);
+    if (args.flag("--print-schema")) {
+        std::fputs(record::schema_json().c_str(), stdout);
+        return 0;
+    }
     bool bad = false;
     const auto input = args.value("--input");
     const auto config_path = args.value("--config");

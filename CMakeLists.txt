@@ -50,7 +50,8 @@ target_compile_options(itchbt_warnings INTERFACE -Wall -Wextra -Wpedantic -Wconv
 include(cmake/Dependencies.cmake)
 
 # Most of the engine is templates in include/; src/ holds what does not need to inline.
-add_library(itchbt STATIC src/itch/reader.cpp src/record/recorder.cpp src/sim/config.cpp
+add_library(itchbt STATIC src/itch/reader.cpp src/record/recorder.cpp src/record/schema.cpp
+                          src/sim/config.cpp
                           src/util/platform.cpp src/util/sha256.cpp)
 add_library(itchbt::itchbt ALIAS itchbt)
 target_include_directories(itchbt PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
