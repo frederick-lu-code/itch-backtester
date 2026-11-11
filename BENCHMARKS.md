@@ -258,8 +258,7 @@ Reading the table:
   in two separate runs. It is published as measured, but it describes the scheduler, not the
   ring: with only 1,024 slots the producer fills the ring and spins until the consumer thread
   gets a core, which this machine, unattended in Low Power Mode, was slow to grant. The same
-  benchmark run interactively earlier in the project took tens of nanoseconds per item. It is
-  also the reason the recorder's ring defaults to 65,536 slots.
+  benchmark run interactively earlier in the project took tens of nanoseconds per item.
 
 Dispatch: the two `BM_EngineDispatch` rows replay the same synthetic stream through the whole
 engine, once with the strategy bound through the concept and once through the virtual adapter.
